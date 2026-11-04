@@ -1,200 +1,268 @@
 ---
 name: zcode-executor
-description: 把一件已经想清楚的开发任务交给本机 ZCode（GLM）执行，在隔离的执行副本里改代码，用 git diff 和测试验收。当用户说「让 zcode 去做」「派给 zcode」「派给执行端」，或者当前会话负责规划、实际改代码要交给 zcode 时使用。也用于查看 zcode 会话状态、给正在跑的回合插话、应答挂起的审批请求或提问。
+description: Hand a fully specified development task to the local ZCode (GLM) — it changes code in an isolated worktree, and you accept the result with git diff and tests. Use when the user says "let zcode do it" / 「让 zcode 去做」「派给 zcode」「派给执行端」, or when this session does the planning while the actual code changes go to zcode. Also covers checking zcode session status, steering a running turn, and answering pending permission requests or questions.
 ---
 
-# 把任务派给 zcode 执行
+# Dispatch the task to zcode
 
-你是规划中枢，zcode 是执行端。你把要做什么写成任务单，zcode 在隔离的执行副本（git worktree）里改，
-你用客观证据验收。命令是 `zcode-executor`，下面的命令块替换占位符后可直接复制运行。
-终端里先 `command -v zcode-executor` 确认：在 PATH 里就照抄命令块。找不到时按宿主取值：
-- Claude Code 插件装好时已进 PATH；散装用法里它是本 skill 目录上两级的 `bin/zcode-executor`（`<插件根>/bin/zcode-executor`），用绝对路径调；
-- 本机源码用法：仓库 `bin/` 的绝对路径（示例：`/Volumes/MacData/projects/zcode-executor/bin/zcode-executor doctor`）；
-- 也可以 `npm install -g zcode-executor` 或直接 `npx zcode-executor …`。
+You are the planning hub; zcode is the executor. You write what to do into a task file, zcode changes
+code in an isolated worktree (a git worktree), and you accept with objective evidence. The command is
+`zcode-executor`; the command blocks below can be copied and run once placeholders are replaced.
+First run `command -v zcode-executor` in the terminal: if it is on PATH, copy the blocks as they are.
+If not found, resolve per host:
+- With the Claude Code plugin installed it is already on PATH; in standalone usage it is
+  `bin/zcode-executor` two levels above this skill's directory (`<plugin root>/bin/zcode-executor`) — call it by absolute path;
+- Local source checkout: the absolute path of the repo's `bin/` (example: `/Volumes/MacData/projects/zcode-executor/bin/zcode-executor doctor`);
+- Or `npm install -g zcode-executor`, or just `npx zcode-executor …`.
 
-## 工作模式：主 agent 编排，原会话闭环
+## Working model: the head agent orchestrates, loops close in the original sessions
 
-- 主 agent 负责任务单、调度和最终证据验收；实现与返工交给执行会话，代码评审与复审交给独立 review 会话。记录任务对应的执行 id、review id 和执行副本路径；review 会话只读。
-- **返工 → 原执行会话；返工后复审 → 原 review 会话。** 将评审问题、复现证据和通过标准写入返工单，等原执行回合结束后带 `--task` 重投；将最新 diff、测试结果和返工单交回原 review 会话，逐项确认问题关闭。主 agent 的证据验收不代替 review，也不亲自接管修补。原会话确实不可恢复时才新建，并移交上述上下文。
-- **投递后先推进独立工作，确实无事可做再等待。** 默认 `send` 不带 `--wait`，后台起 `follow` 并记录 job id；期间规划下一步、准备验收清单或梳理后续任务，不碰执行端正在改的文件，不提前使用尚未完成的产物。收到完成或挂起通知再处理，交付前收齐结果；不要用反复 `status` 或 sleep 循环代替后台等待。
+- The head agent owns task files, dispatching, and final evidence-based acceptance; implementation and rework go to
+  the execution session, code review and re-review to a separate review session. Record the execution id, review id,
+  and worktree path for each task; the review session is read-only.
+- **Rework → the original execution session; re-review after rework → the original review session.** Write the review
+  findings, reproduction evidence, and pass criteria into a rework task file, wait for the original execution turn to
+  finish, then resend with `--task`; hand the latest diff, test results, and the rework task file back to the original
+  review session and confirm each finding is closed. The head agent's evidence check does not replace review, and it
+  does not take over the fix itself. Only create a new session when the original one is truly unrecoverable, and hand
+  over the context above.
+- **After a send, advance independent work first; wait only when there is truly nothing else to do.** By default `send`
+  runs without `--wait`: start `follow` as a background task and record its job id. Meanwhile plan the next step,
+  prepare the acceptance checklist, or line up follow-up tasks; do not touch files the executor is changing and do not
+  consume unfinished output early. Handle completion or pending notifications when they arrive, and collect all results
+  before delivery. Do not replace background waiting with repeated `status` calls or sleep loops.
 
-## 铁律
+## Iron rules
 
-1. **任务单是契约，消息只是门铃。** 任务内容全部写进任务单文件，投递正文一句「执行 tasks/T-xxx.md」就够——
-   zcode 是有自己判断的完整 agent，一段话过去它会自己重新理解，任务单才是事后对账的依据。
-   所以 `send` 必带 `--task`：不给任务单，挂起转给你时应答就没有授权依据，越界判断没有参照，几乎全部得问人。
-   应答认的是**投递那一刻**的任务单内容（入队时留了快照）：之后再改文件，挂起应答看不到，带着 `--task` 再投一次才算数。
-2. **验收看 `git diff` 和测试，不看它怎么说。** 回合结束带回来的回答只是执行端自述。判断做没做对，
-   一律回主仓看 diff、在执行副本里跑测试、读产物文件。
-3. **反复投同一条会话三四轮还没过，回去改任务单。** 通常问题出在任务描述不清，不是多投几次能解决的。
-   改法：写 `tasks/T-xxx-fix.md` 说明差在哪，再投同一条会话（它有上下文，带着上下文返工）。
-4. **挂起先分流，不替用户批越界。** 先核对任务单、用户已有授权和具体操作：能确认且规则允许主 agent 处理的，按「退出码 5」应答；越界、无法确认或上层指令要求人工确认的，带判断依据转用户。挂起本身不是危险判据，也不是放行依据；本 skill 不覆盖宿主的审批限制。
+1. **The task file is the contract; the message is only a doorbell.** All task content goes into the task file; a send
+   body of "Execute tasks/T-xxx.md" is enough — zcode is a full agent with its own judgment, and a paragraph of prose
+   will be re-interpreted on its own; the task file is what you reconcile against afterwards. That is why `send` must
+   always carry `--task`: without a task file, a pending handed to you has no authorization basis, out-of-scope
+   judgment has no reference, and nearly everything ends up asked of a human. The answer is judged against the task
+   file **as it stood at the moment of the send** (a snapshot is kept at enqueue): later edits to the file are
+   invisible to pending answers — only sending again with `--task` counts.
+2. **Accept on `git diff` and tests, not on what it says.** The reply brought back at turn end is the executor's
+   self-report. To judge whether it was done right, always go back to the main repository for the diff, run tests in
+   the worktree, and read the produced files.
+3. **If the same session fails three or four rounds in a row, go back and fix the task file.** The problem is usually
+   an unclear task description, not something more sends will solve. Fix: write `tasks/T-xxx-fix.md` stating what fell
+   short, then send to the same session again (it has the context and reworks with it).
+4. **Triage a pending first; do not approve out-of-scope actions for the user.** Check the task file, the user's
+   existing authorizations, and the concrete operation: what you can confirm and what the rules let the head agent
+   handle, answer per the "exit code 5" section; anything out of scope, unverifiable, or required by higher-level
+   instructions to go to a human, relay to the user with your reasoning. Pending itself is neither a danger signal
+   nor a grounds for approval; this skill does not override the host's approval restrictions.
 
-## 一个任务的完整走法
+## One task, end to end
 
 ```bash
-# 1. 先写任务单（模板 templates/task.md）
-#    验收标准要能被机器检查：跑什么命令、看什么文件、期望什么输出
-#    合理拆分任务：一单只做一件能独立验收的事；估计要改很多文件或跑很久测试的活儿，
-#    拆成多单串行投（前一单过了再投下一单），别塞成一单
-#    回合默认超时 1 小时（--timeout 3600）：任务还要更久的，派单手动给更长的 --timeout，
-#    超时会把当前回合取消、重投浪费额度
+# 1. Write the task file first (template templates/task.md)
+#    Acceptance criteria must be machine-checkable: which command to run, which files to look at, what output to expect
+#    Split sensibly: one task file does one independently acceptable thing; work that will touch many files
+#    or run long tests goes into several task files sent serially (next one only after the previous passes),
+#    not crammed into one
+#    A turn times out after 1 hour by default (--timeout 3600): for longer tasks give a longer --timeout manually —
+#    a timeout cancels the current turn, and resending wastes quota
 
-# 2. 给仓库建执行副本（每个仓库一个，按任务切分支）
-WT=~/.zcode-executor/worktrees/<仓库名>
-git -C <主仓绝对路径> worktree add "$WT" -b task/T-xxx    # 首次：在 $WT 里装一次依赖
+# 2. Create the worktree for the repository (one per repository, branch per task)
+WT=~/.zcode-executor/worktrees/<repo-name>
+git -C <main-repo-abs-path> worktree add "$WT" -b task/T-xxx    # first time: install dependencies once inside $WT
 
-# 3. 建会话：只做零 token 登记，返回本地 id（x_ 开头）；zcode 会话第一次投递时才建
+# 3. Create the session: a zero-token registration only, returns the local id (x_ prefix); the zcode session is created on first send
 zcode-executor new --cwd "$WT" --title T-xxx --tier fast --json
 
-# 每个对话第一次派单前没有额外步骤，照常普通投递
-# 4. 非阻塞投递（--task 必带），随后用后台任务起 follow <id>；按「工作模式」推进独立工作
-#    消息里的 tasks/T-xxx.md 是让 zcode 自己在执行副本里读的相对路径，所以任务单必须放在 $WT 里；
-#    --task 给的是模型审批看的授权依据，用绝对路径
-zcode-executor send <id> "执行 tasks/T-xxx.md" --task "$WT/tasks/T-xxx.md"
+# No extra step before the first dispatch in a conversation — just send as usual
+# 4. Send non-blocking (--task is mandatory), then start follow <id> as a background task; advance independent work per "Working model"
+#    tasks/T-xxx.md in the message is a relative path for zcode to read itself inside the worktree, so the task file must live in $WT;
+#    --task is the task file a pending answer uses as the authorization basis — absolute path
+zcode-executor send <id> "Execute tasks/T-xxx.md" --task "$WT/tasks/T-xxx.md"
 
-# 5. 收到完成通知后，交独立 review 会话评审；主 agent 核对客观证据。
-#    zcode 不提交，改动停在执行副本工作区，先把未跟踪文件收进来再看 diff
+# 5. On the completion notice, hand over to a separate review session; the head agent checks objective evidence.
+#    zcode does not commit — changes sit in the worktree working tree; stage untracked files first, then look at the diff
 git -C "$WT" add -A && git -C "$WT" diff --cached --stat && git -C "$WT" diff --cached
-git -C "$WT" <跑测试的命令>
-#    还想看审批经过：$ZCODE_EXECUTOR_HOME/runs/<id>/events.jsonl 里 type 为 executor.gate 的行
+git -C "$WT" <test-command>
+#    Want the approval trail too: lines with type executor.gate in $ZCODE_EXECUTOR_HOME/runs/<id>/events.jsonl
 
-# 6. 过了：在 $WT 里提交（git -C "$WT" commit -m "T-xxx: …"），再回主仓合并（见下一节）。
-#    没过：git -C "$WT" reset 撤掉暂存，写 tasks/T-xxx-fix.md，投原执行会话；完成后交原 review 会话复审
+# 6. Passed: commit inside $WT (git -C "$WT" commit -m "T-xxx: …"), then merge in the main repository (next section).
+#    Failed: git -C "$WT" reset to unstage, write tasks/T-xxx-fix.md, send to the original execution session;
+#    on completion, re-review in the original review session
 ```
 
-默认投递立刻返回、后台 runner 继续工作；`follow` 用宿主的后台任务工具启动（`run_in_background: true`），记下返回的 job id。
-仅当前下一步确实依赖结果且无独立工作时才等待该后台任务；`send --wait` 是可选阻塞用法，挂起时以退出码 5 返回。
+A send returns immediately and the background runner keeps working; start `follow` with the host's
+background-task tool (`run_in_background: true`) and record the returned job id. Wait on that background
+task only when the very next step truly depends on the result and there is no independent work;
+`send --wait` is the optional blocking form — it returns exit code 5 when pending.
 
-## git 一律 `-C <绝对路径>`，别靠 cd
+## Always `git -C <absolute-path>`, never rely on cd
 
-主仓和执行副本是两个目录，一条 Bash 里 `cd` 过一次之后，后面的 `git merge`、`git checkout -b`
-就可能跑在你以为之外的那个仓库里。真踩过的坑：在执行副本里跑完测试接着 merge，merge 落在执行副本
-（HEAD 就是那个分支，自合并什么都没变），主仓 main 没动，下一单从 main 切的分支缺上一单的代码。
+The main repository and the worktree are two directories; after one `cd` inside a Bash call, the subsequent
+`git merge` or `git checkout -b` may run in the other repository than you think. A real past trap: running
+tests in the worktree, then merging right there — the merge landed in the worktree (HEAD was already that
+branch, so the self-merge changed nothing), the main repository's main never moved, and the next task's
+branch cut from main was missing the previous task's code.
 
 ```bash
-git -C <主仓绝对路径> merge --ff-only task/T-xxx      # 合并进 main：在主仓
-git -C <主仓绝对路径> log --oneline -1                # 切新分支前核对 main 已含上一单
-git -C "$WT" checkout -b task/T-yyy main              # 切新分支：在执行副本
+git -C <main-repo-abs-path> merge --ff-only task/T-xxx      # merge into main: in the main repository
+git -C <main-repo-abs-path> log --oneline -1                # before cutting a new branch, verify main contains the previous task
+git -C "$WT" checkout -b task/T-yyy main              # cut the new branch: in the worktree
 ```
 
-## 模型等级与思考等级
+## Model tiers and thought levels
 
-按等级选 ZCode 模型，不写模型名——模型换代不用改习惯。`models` 能看每个等级当前分到了谁。
+Select ZCode models by tier, not by model name — habits survive model churn. `models` shows which model
+each tier currently resolves to.
 
-| 活儿 | 建议 |
+| Work | Suggestion |
 | --- | --- |
-| 机械改动（改名、搬代码、按明确清单补测试） | `--tier fast` |
-| 常规实现（有明确验收标准的功能） | `--tier fast` |
-| 难活（要设计取舍、调试难复现、改陌生代码） | `--tier strong` |
+| Mechanical changes (renames, moving code, adding tests to an explicit list) | `--tier fast` |
+| Regular implementation (a feature with clear acceptance criteria) | `--tier fast` |
+| Hard work (design trade-offs, hard-to-reproduce debugging, unfamiliar code) | `--tier strong` |
 
-- **思考等级默认 `high`，都不用调。** Flash 类模型不要往低调，实测效果差。
-- provider 优先账号型个人版 coding plan（App 账号登录后的 key），其次账号型团队版，再次 `config.json` 里的 coding plan；同名模型在多个 provider 下并存时不用管，插件自己选对，要换就在插件配置里写 `preferredProvider`（如 `account:bigmodel-team-coding-plan`）。
-- 模型和思考等级建会话时定，同一条会话后续投递沿用。难活别复用之前建的 fast 会话，新开一条。
-- **原 zcode 会话上下文超过 1M token 就换新会话派单。** 会话越长每次投递的固定开销越大、执行效率越低；
-  旧会话攒的上下文对新任务多半是噪声。新任务一律新会话（必要时配新副本），把任务单和必要 diff 移交过去。
+- **The thought level defaults to `high`; leave it alone.** Do not lower it for Flash-class models — measured results are worse.
+- Providers: prefer the personal account coding plan (the key obtained after signing in to the App), then the team
+  account plan, then the coding plan in `config.json`; when the same model name exists under several providers, do not
+  worry — the plugin picks the right one. To override, set `preferredProvider` in the plugin config
+  (e.g. `account:bigmodel-team-coding-plan`).
+- Model and thought level are set when the session is created and carry over to later sends. For hard work, do not
+  reuse a previously created fast session — open a new one.
+- **Once the original zcode session's context exceeds 1M tokens, dispatch to a new session.** The longer the session,
+  the higher the fixed overhead of every send and the lower the execution efficiency; context accumulated in an old
+  session is mostly noise for a new task. Always use a new session for a new task (with a new worktree if needed) and
+  hand over the task file and any necessary diffs.
 
-## 退出码与应对
+## Exit codes and what to do
 
-| 码 | 含义 | 你该做什么 |
+| Code | Meaning | What you do |
 | --- | --- | --- |
-| 0 | 回合干完了 | 去验收，别直接信它说完成了 |
-| 1 | 用法错、zcode 起不来（含 ZCode App 早于 3.12） | 看报错；环境问题跑 `zcode-executor doctor`（不花额度的自检） |
-| 2 | 被拒：白名单外、会话不在登记簿、等级或思考等级不合法 | 报错里写了原因，按原因处理，别原样重试 |
-| 3 | `send --wait` 超时（默认 3600 秒，`--timeout` 可改），**当前回合已取消**，会话还在 | 直接再投一次接着做；`follow` 的超时不取消任何东西，只是旁观者到点走了 |
-| 4 | 回合异常：报错、被中止、撞输出上限 | 读 reason；撞上限就把任务拆小再投 |
-| 5 | 挂起等人：审批请求或提问 | 见下一节，别想办法绕过去 |
+| 0 | Turn finished | Go accept; do not trust "done" on its word |
+| 1 | Usage error, or zcode fails to start (including ZCode App older than 3.12) | Read the error; for environment problems run `zcode-executor doctor` (a zero-quota self-check) |
+| 2 | Rejected: outside the allowlist, session not in the registry, invalid tier or thought level | The error states the reason — act on it, do not retry verbatim |
+| 3 | `send --wait` timed out (default 3600 s, changeable via `--timeout`), **current turn already cancelled**, session still alive | Just send again to continue; a `follow` timeout cancels nothing — only the onlooker leaves at the deadline |
+| 4 | Turn ended abnormally: error, aborted, or hit the output limit | Read the reason; on the output limit, split the task smaller and resend |
+| 5 | Pending, waiting for a human: permission request or question | See the next section; do not look for ways around it |
 
-## 退出码 5：挂起的两种情况
+## Exit code 5: the two kinds of pending
 
-挂起不过期，会话停在原地等人。`send --wait` 立刻返回 5 并打印挂起内容；后台跑时用 `status <id>` 看。
+Pending does not expire; the session sits still waiting. `send --wait` returns 5 immediately and prints the
+pending content; when running in the background, check with `status <id>`.
 
-**审批请求**（执行端要做某个操作，等你允许）：
+**Permission request** (the executor wants to perform an operation and waits for your leave):
 
-1. 读取完整工具名、参数、目标路径和挂起理由，对照任务单与用户授权判断实际影响；证据不足先做只读核查。
-2. **可自行确认**：操作明确在授权范围内、未命中红线，且上层指令允许自主应答 → 说明依据后 `zcode-executor approve <id>`（仅本次）；明确违反任务约束且允许自主拒绝 → `zcode-executor deny <id>`，将原因交回原执行会话调整方案。
-3. **需人工决定**：越界（例如执行副本外写入）、新增权限或不可逆影响未获授权、证据不足，或上层指令明确要求转交 → 原样转述工具名、参数、理由，附建议与未确认点（Claude Code 用 AskUserQuestion，DSH 走宿主的上抛）；得到决定再 `approve` / `deny`。不得通过改任务单、关闭审批或换命令绕过限制。
+1. Read the full tool name, arguments, target paths, and the stated reason; judge the actual impact against the task
+   file and the user's authorizations; if evidence is insufficient, do read-only checks first.
+2. **You can decide yourself**: the operation is clearly within the authorized scope, hits no red line, and
+   higher-level instructions allow autonomous answering → state your basis, then `zcode-executor approve <id>`
+   (this occurrence only); it clearly violates the task constraints and autonomous denial is allowed →
+   `zcode-executor deny <id>` and hand the reason back to the original execution session to adjust.
+3. **A human must decide**: out of scope (e.g. writes outside the worktree), new permissions or irreversible impact
+   not authorized, insufficient evidence, or higher-level instructions explicitly require handoff → relay the tool
+   name, arguments, and reason verbatim, with your recommendation and open points (AskUserQuestion in Claude Code;
+   the host's escalation path in DSH); then `approve` / `deny` once decided. Never bypass a restriction by editing
+   the task file, closing the approval, or switching commands.
 
-   规则是 `self-modify-approval` 的要格外当心：那是执行端在碰 zcode-executor 自己的数据目录（审批的挂起与应答都在里面）或者在调 `zcode-executor` 命令。正常干活用不着这两样，原样告诉用户它想做什么，别替它解释成无害。
+   Be extra careful when the rule is `self-modify-approval`: that is the executor touching zcode-executor's own data
+   directory (pending approvals and their answers live there) or invoking the `zcode-executor` command. Normal work
+   needs neither; tell the user exactly what it wants to do — do not explain it into harmlessness on its behalf.
 
-**应答绑定限制（approve / deny / answer 都适用）**：当前 CLI 会重新读取 pending，未提供 expected-requestId/CAS；只做两次读取或声称单人操作不能防止串答。只有已验证的外部串行化覆盖「核对当前请求 → CLI 读取」全过程，才执行应答；否则保留挂起并报告该限制，请用户协调安全处理，人工说“允许”本身也不消除竞态。不要虚构参数或直接写 answer.json。
+**Response-binding limitation (applies to approve / deny / answer alike)**: the current CLI re-reads pending and
+provides no expected-requestId/CAS; reading twice or claiming a single operator does not prevent crossed answers.
+Only answer when verified external serialization covers the whole "verify current request → CLI read" span;
+otherwise keep the pending, report the limitation, and ask the user to coordinate safe handling — a human saying
+"allow" does not by itself remove the race. Do not invent parameters or write answer.json directly.
 
-**提问**（执行端反过来问你问题，要答案不是要允许）：
+**Question** (the executor asks you something; it wants an answer, not permission):
 
-1. 先自己判断任务单里有没有答案，能答就不必惊动用户：`zcode-executor answer <id> <值…>`。
-   有选项按序号、value 或 label 给值，多选逗号分隔；无选项就是自由文本。
-2. 答不了再问人，拿到答案后同样 `answer` 回过去。
+1. First check whether the task file already contains the answer; if you can answer, do not disturb the user:
+   `zcode-executor answer <id> <value…>`. With options, give the value by index, value, or label — comma-separated
+   for multiple choice; without options it is free text.
+2. Only ask a human if you cannot answer; once you have the answer, pass it back the same way with `answer`.
 
-## 插话、跟看、叫停
-
-```bash
-zcode-executor send <id> "方向改一下，先只改 A" --steer   # 回合进行中插话，不打断
-zcode-executor follow <id> [--stream]                     # 跟看后台 runner，写出新结果就返回
-zcode-executor status <id>                                # 只读快照：状态、最近工具、队列、挂起多久
-zcode-executor cancel <id>                                # 叫停：挂起的先答拒绝，再停回合，不再取队列
-```
-
-- **`--steer` 是插话不是打断。** 消息递给正在跑的回合，不打断它；要打断先 `cancel` 再重投。
-  插话在下一个工具边界生效；没有边界时排到回合结束后执行。
-- **`follow` 用后台任务起**（`run_in_background`），它退出时你会被自动叫回来。别在前台用 timeout
-  包着等——超时切断的只是你这个旁观者，回合还在跑，你却容易当成它挂了。
-- 想随时问「到哪了」用 `status`：只读、不花额度、不阻塞。phase 的取值：`running` 在跑、`pending` 挂起等人、
-  `idle` runner 活着但队列空、`exited` runner 跑完正常退出（配合「上次: done」看，不是出事）、`stale` runner 跑到一半没了，最需要人工看。
-  `list` 每行的 `[phase]` 同一套词，没有 running / pending 就是没有在跑的会话。
-- 要边跑边看，`send` / `follow` 加 `--stream`：工具调用摘要和成型回答打到 stderr。
-
-## start plan 投递
-
-走 Start Plan（`--start-plan`）额度前，先读 `references/start-plan.md`：
-前置条件、完整命令与被拒对照表都在那里。
-
-## 两种会话 id
-
-- 命令一律用**本地 id**（`x_` 开头，`new` 返回的那个）。
-- zcode 自己的 `sess_…` id 首回合之后才存在，只在 `list` 和各命令的 `--json` 里和本地 id 并排显示，对账用，不敲命令。
-
-## 别做的事
-
-- **不要在 ZCode App 里打开正在跑的会话。** 两边写同一个 sqlite，没有跨进程锁，会互相踩。
-- **不在执行副本之外派活。** `new` 的 cwd 白名单默认只有 `~/.zcode-executor/worktrees/`，
-  那是保护不是障碍；两个 agent 同时改同一批文件会互相覆盖。
-- **不要把「zcode 说改好了」当验收写进汇报。** 验收只认 `git diff` 和测试结果（铁律 2）。
-- 不要投第四轮。三四轮没过，改任务单（铁律 3）。
-- **任务单里别写凭据。** 任务单是挂起应答的授权依据，也会随事件落盘留在本机。
-
-## 命令速查
+## Steering, following, stopping
 
 ```bash
-zcode-executor doctor [--json]                  # 不花额度的自检：zcode、配置、握手、等级
-zcode-executor models [--json]                  # 可用模型、思考等级、禁用原因、自动分到哪个等级
-zcode-executor list [--project 关键字] [--json]  # 登记簿里的会话：本地 id、sess_、上次结果、是否挂起
-zcode-executor new --cwd <绝对路径> [--title T] [--tier fast|strong] [--thought 档] [--deny "工具…"] [--provider id] [--json]
-zcode-executor send <id> <正文|-> [--task 文件] [--wait] [--steer] [--timeout 秒] [--stream] [--json]
-zcode-executor send <id> <正文|-> --start-plan [--task 文件] [--wait] [--timeout 秒] [--stream] [--json]  # Start Plan 额度
-zcode-executor follow <id> [--timeout 秒] [--stream] [--json]
-zcode-executor status <id> [--tools N] [--json]  # 在跑/空闲/挂起/异常结束、最近工具调用、队列长度
-zcode-executor cancel <id>                       # 叫停：挂起的先答拒绝，之后不再取队列
-zcode-executor approve <id>                      # 应答挂起的审批请求，只回 allow_once
-zcode-executor deny <id>                         # 应答挂起的审批请求为拒绝
-zcode-executor answer <id> <值…>                 # 应答挂起的提问：按序号/value/label，多选逗号分隔
+zcode-executor send <id> "Change of direction: do A only for now" --steer   # interject mid-turn, no interruption
+zcode-executor follow <id> [--stream]                     # follow the background runner; returns when new results appear
+zcode-executor status <id>                                # read-only snapshot: phase, recent tools, queue, how long pending
+zcode-executor cancel <id>                                # stop: answer pending with a denial first, then stop the turn, take nothing more from the queue
 ```
 
-- 观察面板实时显示各会话进展（回复、工具、挂起与排队）：Claude Code 里用户输入 `/zcode` 打开（你投递时自动打开，
-  状态栏汇总、关键变化弹提示），DSH 右侧栏有「zcode 任务」tab。面板只看不应答，挂起照样按上面的规矩在对话里处理。
-  背后是你不需要自己跑的只读 `zcode-executor watch --json`。
+- **`--steer` is an interjection, not an interruption.** The message is handed to the running turn without breaking it;
+  to break, `cancel` first, then resend. The interjection takes effect at the next tool boundary; with no boundary it
+  is queued until the turn ends.
+- **Start `follow` as a background task** (`run_in_background`); you are called back automatically when it exits. Do
+  not wrap it in a foreground `timeout` — a timeout cuts off only you, the onlooker; the turn keeps running, and it is
+  easy to mistake that for a hang.
+- For an on-demand "where is it now", use `status`: read-only, zero quota, non-blocking. Phase values: `running`
+  (working), `pending` (waiting for a human), `idle` (runner alive, queue empty), `exited` (runner finished and
+  exited normally — read together with the 「上次: done」 line, not a failure), `stale` (runner vanished mid-run;
+  needs human eyes most). Every `[phase]` in `list` uses the same vocabulary; no running / pending means nothing is
+  running.
+- To watch live, add `--stream` to `send` / `follow`: tool-call summaries and finished replies stream to stderr.
 
-- 正文写 `-` 从 stdin 读，长文本别跟命令行引号较劲：
+## Start-plan sends
+
+Before spending Start Plan (`--start-plan`) quota, read `references/start-plan.md`:
+prerequisites, the full commands, and the rejection table live there.
+
+## The two session ids
+
+- Commands always use the **local id** (starts with `x_`, the one `new` returns).
+- ZCode's own `sess_…` id exists only after the first turn and appears alongside the local id only in `list` and
+  `--json` output — for reconciliation, never typed into commands.
+
+## Do not
+
+- **Never open a running session in the ZCode App.** Both sides write the same sqlite with no cross-process lock;
+  they will trample each other.
+- **Do not dispatch outside the worktrees.** The cwd allowlist for `new` defaults to
+  `~/.zcode-executor/worktrees/` only — that is protection, not an obstacle; two agents editing the same files at
+  once overwrite each other.
+- **Never report "zcode says it's done" as acceptance.** Acceptance recognizes only `git diff` and test results
+  (iron rule 2).
+- Do not send a fourth round. Three or four failed rounds mean fix the task file (iron rule 3).
+- **Never put credentials in a task file.** The task file is the authorization basis for pending answers, and it
+  also lands on local disk with the events.
+
+## Command cheat sheet
+
+```bash
+zcode-executor doctor [--json]                  # zero-quota self-check: zcode, config, handshake, tiers
+zcode-executor models [--json]                  # available models, thought levels, disable reasons, automatic tier assignment
+zcode-executor list [--project keyword] [--json]  # sessions in the registry: local id, sess_, last result, pending flag
+zcode-executor new --cwd <abs-path> [--title T] [--tier fast|strong] [--thought level] [--deny "tools…"] [--provider id] [--json]
+zcode-executor send <id> <body|-> [--task file] [--wait] [--steer] [--timeout s] [--stream] [--json]
+zcode-executor send <id> <body|-> --start-plan [--task file] [--wait] [--timeout s] [--stream] [--json]  # Start Plan quota
+zcode-executor follow <id> [--timeout s] [--stream] [--json]
+zcode-executor status <id> [--tools N] [--json]  # running / idle / pending / abnormal end, recent tool calls, queue length
+zcode-executor cancel <id>                       # stop: answer pending with a denial first, then take nothing more from the queue
+zcode-executor approve <id>                      # answer a pending permission request; replies allow_once only
+zcode-executor deny <id>                         # answer a pending permission request with a denial
+zcode-executor answer <id> <value…>              # answer a pending question: by index/value/label, comma-separated for multiple choice
+```
+
+- The watch pane shows live progress across sessions (replies, tools, pending, queueing): in Claude Code the user
+  opens it with `/zcode` (it also opens automatically when you send, with a status-bar summary and toasts on key
+  changes); DSH has a 「zcode 任务」 tab in the right sidebar. The pane is view-only — pending is still handled in
+  the conversation per the rules above. Behind it is a read-only `zcode-executor watch --json` you do not need to
+  run yourself.
+
+- A body of `-` reads from stdin; for long text do not fight shell quoting:
 
   ```bash
   zcode-executor send <id> - --task "$WT/tasks/T-xxx.md" <<'EOF'
-  执行 tasks/T-xxx.md，按验收标准逐条自检后再停
+  Execute tasks/T-xxx.md; self-check every acceptance criterion one by one before stopping
   EOF
   ```
 
-- `--deny` 建会话时从工具注册中移除指定工具。**任务不需要执行端上网就带上 `--deny "WebFetch WebSearch"`**，减少联网工具的可用面。
-  这只移除这两个工具，Bash、js 和 MCP 工具仍可能联网；需要断网时要由系统或容器限制网络。
-- 你自己环境里的凭据变量（`ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`GEMINI_API_KEY`、`GITHUB_TOKEN`、`GH_TOKEN` 等）不会带给执行端。
-  任务要用 GitHub 凭据时靠本机已登录的 `gh` / git 凭据助手，别指望环境变量。
-- `--json` 给机器可读结构，脚本化处理时用；输出里的 `id` 都是本地 id。
-- cwd 会解析成真实路径存进登记簿（macOS 的 `/tmp/x` 会变成 `/private/tmp/x`），`list --project` 按解析后的路径匹配。
-- 数据目录 `~/.zcode-executor/`（`ZCODE_EXECUTOR_HOME` 可改）：`sessions.json` 登记簿，`runs/<id>/` 里有 `events.jsonl`（zcode 事件与闸门决定）、`last.json`、`pending.json`、`runner.log`。
+- `--deny` removes the listed tools from the registry at session creation. **If the task needs no internet on the
+  executor side, pass `--deny "WebFetch WebSearch"`** to shrink the attackable surface of network tools. This removes
+  only those two; Bash, js, and MCP tools can still reach the network — cutting it off entirely is the OS's or
+  container's job.
+- Credential variables from your own environment (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`,
+  `GITHUB_TOKEN`, `GH_TOKEN`, …) are not passed to the executor. When a task needs GitHub credentials, rely on the
+  locally signed-in `gh` / git credential helper, not environment variables.
+- `--json` gives a machine-readable structure for scripted handling; every `id` in the output is the local id.
+- cwd is resolved to its real path before entering the registry (on macOS `/tmp/x` becomes `/private/tmp/x`);
+  `list --project` matches against the resolved path.
+- Data directory `~/.zcode-executor/` (overridable via `ZCODE_EXECUTOR_HOME`): `sessions.json` registry;
+  `runs/<id>/` holds `events.jsonl` (zcode events and gate decisions), `last.json`, `pending.json`, `runner.log`.
