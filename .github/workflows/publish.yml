@@ -22,7 +22,17 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
 
-      # 零依赖，没有 install 一步。npm test 里含 sync-doc-version --check：
+      # dsh-plugin/lib 不入库：npm 包里的 DSH 产物在这里构建（测试也要读它）。
+      # 版本钉在 dsh-plugin 的 packageManager（pnpm@11.7.0）。
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - run: pnpm install --frozen-lockfile
+        working-directory: dsh-plugin
+      - run: npm run build
+        working-directory: dsh-plugin
+
+      # CLI 零依赖，没有 install 一步。npm test 里含 sync-doc-version --check：
       # README 徽章和两份插件清单的版本号落后于 package.json 就在这里挂掉。
       - run: npm run test:ci
 

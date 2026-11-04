@@ -3,4 +3,5 @@ node_modules/
 .preview/
 .DS_Store
 
-# lib/ 是构建产物但刻意入库（SPEC「打包与形态」：lib/ 产物入库），不要加进这里。
+# lib/ 是构建产物，不入库：CI（ci.yml / publish.yml）在测试与发布前构建，本地开发 pnpm install && npm run build。
+lib/
