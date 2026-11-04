@@ -2,7 +2,7 @@
 
 <h1 align="center">zcode-executor</h1>
 
-<p align="center">中文 · <a href="./README.md">English</a></p>
+<p align="center">中文 · <a href="./README.md">English</a> · <a href="./README.ru.md">Русский</a></p>
 
 <p align="center"><strong>Claude 规划，ZCode 写码，git 验收。</strong></p>
 
@@ -375,7 +375,7 @@ npm test          # 817 个用例对剧本驱动的 mock app-server 与 mock 闲
 node --check lib/**/*.mjs
 ```
 
-发版由 tag 驱动：`npm version patch` 改 `package.json`、把版本号同步进两份 README 和各宿主的插件清单、建提交和 tag；`git push --follow-tags` 触发 workflow 跑测试、发 npm（Trusted Publishing，无令牌）、建 GitHub Release。提交信息就是 changelog。
+发版由 tag 驱动：`npm version patch` 改 `package.json`、把版本号同步进三份 README 和各宿主的插件清单、建提交和 tag；`git push --follow-tags` 触发 workflow 跑测试、发 npm（Trusted Publishing，无令牌）、建 GitHub Release。提交信息就是 changelog。
 
 纯 `.mjs`，零运行时依赖，无构建。设计文档在 `docs/`：[PRD](docs/PRD.zh-CN.md)、[SPEC](docs/SPEC.zh-CN.md)、[CONTEXT](docs/CONTEXT.zh-CN.md)（术语）、[RULES](docs/RULES.zh-CN.md)（开发规范）、[decisions](docs/decisions.zh-CN.md)、[verified](docs/verified.zh-CN.md)（对真 app-server 实测的事实）。给 agent 看的入口是 [AGENTS.md](AGENTS.md)。
 

@@ -2,7 +2,7 @@
 
 <h1 align="center">zcode-executor</h1>
 
-<p align="center"><a href="./README.zh-CN.md">中文</a> · English</p>
+<p align="center"><a href="./README.zh-CN.md">中文</a> · <a href="./README.ru.md">Русский</a> · English</p>
 
 <p align="center"><strong>Claude plans. ZCode codes. Git verifies.</strong></p>
 
@@ -387,7 +387,7 @@ npm test          # 817 cases against a scripted mock app-server and mock off-pe
 node --check lib/**/*.mjs
 ```
 
-Releases are tag-driven: `npm version patch` bumps `package.json`, syncs the version into both READMEs and every host's plugin manifest, and commits and tags; `git push --follow-tags` triggers the workflow that runs the tests, publishes to npm (Trusted Publishing, no token) and creates the GitHub Release. Commit messages are the changelog.
+Releases are tag-driven: `npm version patch` bumps `package.json`, syncs the version into all three READMEs and every host's plugin manifest, and commits and tags; `git push --follow-tags` triggers the workflow that runs the tests, publishes to npm (Trusted Publishing, no token) and creates the GitHub Release. Commit messages are the changelog.
 
 Pure `.mjs`, zero runtime dependencies, no build step. Design documents live in `docs/`: [PRD](docs/PRD.md), [SPEC](docs/SPEC.md), [CONTEXT](docs/CONTEXT.md) (glossary), [RULES](docs/RULES.md) (coding rules), [decisions](docs/decisions.md), [verified](docs/verified.md) (facts measured against the real app-server). Agent-facing entry point: [AGENTS.md](AGENTS.md).
 
