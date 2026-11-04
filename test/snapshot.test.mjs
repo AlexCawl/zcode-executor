@@ -365,45 +365,6 @@ test('snapshotOf：exited/idle 的 since 按 last.endedAt → state.updatedAt �
   assert.equal(bare.task, null);
 });
 
-test('snapshotOf：闲时排队中 offpeakQueue 有值、since 取 taken 事件的 at，快照里没有号 id', async (t) => {
-  const home = await makeHome();
-  await makeSession(home, 'x_00000008', {
-    lock: { pid: process.pid },
-    state: { sessionId: 'sess_8', pid: process.pid, phase: 'running', startedAt: T(0), updatedAt: T(0), current: null },
-    offpeak: { phase: 'queued', position: 3, ticketId: 'tk_1', offPeakId: 'op_1', updatedAt: T(0) },
-  });
-  // taken 写在 send 之前（排号阶段本回合的 send 还没写），这里直接作为调用方给的事件传入；
-  // 两条 taken 加一条 retaken：取最后一条的 at，retaken 也认
-  const taken = (at, position, ticketId) => ({ type: 'executor.offpeak.taken', at, offPeakId: 'op_1', ticketId, position });
-  const retaken = { type: 'executor.offpeak.retaken', at: T(3), offPeakId: 'op_1', ticketId: 'tk_9', position: 5 };
-  const snap = snapshotOf({ home, entry: mkEntry('x_00000008', home), repo: null, turnEvents: [taken(T(1), 3, 'tk_1'), taken(T(2), 4, 'tk_2'), retaken] });
-  assert.equal(snap.phase, 'running');
-  assert.deepEqual(snap.offpeakQueue, { phase: 'queued', position: 3 }); // 只有 phase 与 position（offpeak.json 的 position）
-  assert.equal(snap.since, T(3)); // 最后一条取号事件（retaken）的 at
-  assert.equal(JSON.stringify(snap).includes('tk_'), false); // 号 id 不进快照
-});
-
-test('snapshotOf：闲时 ready 给 position null；done 时 offpeakQueue 为 null 且 since 不看 taken', async (t) => {
-  const home = await makeHome();
-  await makeSession(home, 'x_00000009', {
-    lock: { pid: process.pid },
-    state: { sessionId: 'sess_9', pid: process.pid, phase: 'running', startedAt: T(0), updatedAt: T(0), current: { text: 'x', task: null, startedAt: T(2) } },
-    offpeak: { phase: 'ready', position: null, ticketId: 'tk_2', offPeakId: 'op_2', updatedAt: T(0) },
-  });
-  const ready = snapshotOf({ home, entry: mkEntry('x_00000009', home), repo: null, turnEvents: null });
-  assert.deepEqual(ready.offpeakQueue, { phase: 'ready', position: null });
-  assert.equal(ready.since, T(0)); // 排队行没有 taken 就回退 state.startedAt（号就绪时回合还没开始，current 是空的）
-
-  await makeSession(home, 'x_0000000a', {
-    lock: { pid: process.pid },
-    state: { sessionId: 'sess_a', pid: process.pid, phase: 'running', startedAt: T(0), updatedAt: T(0), current: { text: 'x', task: null, startedAt: T(2) } },
-    offpeak: { phase: 'done', position: 1, ticketId: 'tk_2', offPeakId: 'op_2', updatedAt: T(0) },
-  });
-  const taken = { type: 'executor.offpeak.taken', at: T(1), offPeakId: 'op_2', ticketId: 'tk_2', position: 1 };
-  const done = snapshotOf({ home, entry: mkEntry('x_0000000a', home), repo: null, turnEvents: [taken] });
-  assert.equal(done.offpeakQueue, null);
-  assert.equal(done.since, T(2)); // 队列已结算：不用 taken 的 at
-});
 
 test('snapshotOf：turnEvents 为 null 时 reply 取 lastText 末尾 800 字，空白的给 []', async (t) => {
   const home = await makeHome();

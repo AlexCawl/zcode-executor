@@ -18,5 +18,5 @@ test('dsh-plugin 的 SKILL.md 是软链，且指向根 skills/ 的实体文件',
 test('软链目标可读且是 zcode-executor 的 skill', () => {
   const content = readFileSync(link, 'utf8');
   assert.ok(content.includes('name: zcode-executor'), 'front matter 里应有 name: zcode-executor');
-  assert.ok(content.length > 10000, 'skill 内容不应是残缺的');
+  assert.ok(content.length > 5000, 'skill 内容不应是残缺的');
 });

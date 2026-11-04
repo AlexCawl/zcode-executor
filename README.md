@@ -8,7 +8,7 @@
 
 <p align="center">A plugin for Claude Code and other coding agents that hands a well-specified development task to the local <a href="https://zcode.z.ai">ZCode</a> agent (GLM), runs it in an isolated git worktree, guards every write with a hard-rule check plus a model-based review, and lets you verify the result with <code>git diff</code> and tests instead of trusting the agent's own report.</p>
 
-<p align="center"><img src="https://img.shields.io/badge/version-v0.6.1-5B4CF0" alt="v0.6.1"> <a href="https://www.npmjs.com/package/zcode-executor"><img src="https://img.shields.io/npm/v/zcode-executor?label=npm" alt="npm"></a> <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License"> <img src="https://img.shields.io/badge/node-%3E%3D22-green" alt="Node"> <img src="https://img.shields.io/badge/tests-817%20passing-brightgreen" alt="Tests"></p>
+<p align="center"><img src="https://img.shields.io/badge/version-v0.6.1-5B4CF0" alt="v0.6.1"> <a href="https://www.npmjs.com/package/zcode-executor"><img src="https://img.shields.io/npm/v/zcode-executor?label=npm" alt="npm"></a> <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License"> <img src="https://img.shields.io/badge/node-%3E%3D22-green" alt="Node"> <img src="https://img.shields.io/badge/tests-475%20passing-brightgreen" alt="Tests"></p>
 
 ## Why
 
@@ -16,7 +16,7 @@ Claude Code is good at thinking a task through. ZCode grinds out the code at a f
 
 - **The task file is the contract.** Claude writes `tasks/T-xxx.md`; the message to ZCode is just a doorbell.
 - **The worktree is the sandbox.** ZCode works in `~/.zcode-executor/worktrees/<repo>`, never in your main checkout.
-- **The gate decides who gets asked.** Every tool call ZCode wants to make passes hard rules, model review, and a human if needed. Optional Jev pre-screening can allow early; otherwise the original ZCode `fast` + `low` screen runs, followed by slow review only when needed. The models can only *allow* or *ask*; they never *deny* on your behalf.
+- **The gate decides who gets asked.** Every tool call ZCode wants to make passes mechanical hard rules (worktree boundary, self-protection) and everything else stops for a human — you, or the head agent acting for you. Nothing is ever auto-denied or auto-allowed on your behalf. *(lean fork: the model-review pipeline and off-peak queue were removed, see [LEAN-FORK.md](LEAN-FORK.md))*
 - **Evidence beats narrative.** You accept with `git diff` and your test suite.
 
 ## Quick start
@@ -50,7 +50,7 @@ Either way, say what "done" looks like — which command should pass, which file
 ## Two layers
 
 - **Workflow layer** — dispatch and acceptance: task file → isolated worktree → local session id → background runner → `git diff` and tests. This is what the CLI commands and the skill are about.
-- **Safety layer** — automatic handling of ZCode's permission requests. Its logic follows Claude Code's *auto mode*: a fixed table of hard rules that nothing can override, then **optional Jev pre-screening → ZCode fast screen → slow review if needed**, then a human when review cannot pass. Jev adds an early-pass path; it does not replace the ZCode fast screen. The reviewers can *allow* or *ask*; they can never *deny* on your behalf.
+- **Safety layer** — automatic handling of ZCode's permission requests: a fixed set of mechanical hard rules that nothing can override (writes outside the worktree, touching this tool's own state), then a human for everything else. The gate can *ask*; it never *denies* or *allows* on your behalf.
 
 ## How it works
 
@@ -216,7 +216,7 @@ Swap in your agent's directory from the table in the npm section above.
 
 - macOS or Linux. **Windows is not supported yet.** The ZCode app bundle is looked up where each platform puts it (`/Applications/…`, `/opt/ZCode/…`, `/usr/share/zcode/…`); installed anywhere else, point `ZCODE_BIN` at `zcode.cjs`.
 - Node ≥ 22 (ZCode's app-server needs `node:sqlite`).
-- ZCode desktop app **≥ 3.12.2** installed and logged in (3.11 and earlier are not supported). Both login styles work: an account (OAuth) Coding Plan — the CLI decrypts the platform key the App stores in `~/.zcode/v2/credentials.json` (individual and team plans; only the four keys it needs are ever read, plus `zcodejwttoken` for off-peak sends) — or an API-key provider in `~/.zcode/v2/config.json`. Both files are read-only; nothing is ever written back.
+- ZCode desktop app **≥ 3.12.2** installed and logged in (3.11 and earlier are not supported). Both login styles work: an account (OAuth) Coding Plan — the CLI decrypts the platform key the App stores in `~/.zcode/v2/credentials.json` (individual and team plans; only the four keys it needs are ever read, plus `zcodejwttoken` for start-plan sends) — or an API-key provider in `~/.zcode/v2/config.json`. Both files are read-only; nothing is ever written back.
 
 ## Recommended workflow
 
@@ -236,7 +236,7 @@ The pane is not Claude Code-only: the Claude Code plugin and the DSH plugin each
 **Claude Code** (terminal or the desktop Code tab): type `/zcode` to open a live pane showing what this project's zcode sessions are doing:
 
 - **Needs you**: pending permission requests (full command and reason), questions, runners that died;
-- **Running**: the executor's latest message rendered as Markdown, the tool it is running with its arguments, recently finished tools (failures in red), and queue position for off-peak sends;
+- **Running**: the executor's latest message rendered as Markdown, the tool it is running with its arguments, recently finished tools (failures in red);
 - **Finished**: sessions that ended in the last 10 minutes show the outcome and their last message; older ones take one line each.
 
 A message longer than two lines is folded to its first two; press **Expand reply** to read it in full and **Collapse** to fold it again.
@@ -252,13 +252,10 @@ Other agents have no pane and keep using the skill and the CLI.
 
 | Command | What it does |
 | --- | --- |
-| `doctor [--offpeak] [--json]` | Self-check that spends no quota: finds `zcode.cjs` and the bundled `zcode-builtin.json` (ZCode App ≥ 3.12.2), reports both provider sources, does one real handshake, reports model tiers and the review pipeline for a newly started runner (it does not call Jev), and checks the off-peak interface — that step goes online and leaves one self-check session in zcode's own session store. `--offpeak` runs only that step |
-| `quota [--json]` | How many off-peak tickets this tool took today and whether the server would hand one out now; no quota spent, no app-server |
+| `doctor [--json]` | Self-check that spends no quota: finds `zcode.cjs` and the bundled `zcode-builtin.json` (ZCode App ≥ 3.12.2), reports both provider sources, does one real handshake, reports model tiers |
 | `models [--json]` | Lists available models with thought levels and tier assignment |
 | `new --cwd <abs> [--title T] [--tier fast\|strong] [--thought L] [--deny "Tool…"] [--provider id] [--json]` | Registers a session (returns a local id `x_…`); the ZCode session is created on first `send` |
-| `send <id> <text\|-> [--task file] [--wait] [--timeout s] [--steer] [--stream] [--json]` | Queues a message; `--wait` follows until done or blocked; `--task` is the task file the review uses as your authorization; `--steer` injects into a running turn — it takes effect at the next tool boundary, or after the turn ends if there is none |
-| `send <id> <text\|-> --offpeak [--task file] [--wait] [--timeout s] [--stream] [--json]` | Off-peak send: takes a ticket on the spot and runs the turn on the Coding Plan's free off-peak capacity once the ticket is ready (see below) |
-| `send <id> --offpeak --resume [--wait] [--stream] [--json]` | Restarts the runner for an off-peak send left unfinished after the turn exited or the runner died |
+| `send <id> <text\|-> [--task file] [--wait] [--timeout s] [--steer] [--stream] [--json]` | Queues a message; `--wait` follows until done or blocked; `--task` is the task file the pending answer uses as your authorization; `--steer` injects into a running turn — it takes effect at the next tool boundary, or after the turn ends if there is none |
 | `follow <id> [--timeout s] [--stream] [--json]` | Follows a background runner until a result or a pending request |
 | `status <id> [--tools N] [--json]` | Read-only snapshot: phase, recent tools (with command or path), queue, pending, last result |
 | `list [--project kw] [--json]` | Registered sessions with phase, tier and last outcome; `--json` adds the owning repository |
@@ -267,11 +264,7 @@ Other agents have no pane and keep using the skill and the CLI.
 | `approve <id>` / `deny <id>` | Answers the pending permission request (allow is `allow_once` only) |
 | `answer <id> [--] <values…>` | Answers the pending question by index, value or label; multi-select comma-separated |
 
-Exit codes: `0` done · `1` usage / cannot start · `2` refused (whitelist, unknown session, bad tier; an off-peak send refused before or while taking a ticket) · `3` `--wait` timed out (turn cancelled) · `4` turn failed / cancelled · `5` **blocked, waiting for a human** (permission or question).
-
-### Off-peak sends
-
-An off-peak send runs the turn on the Coding Plan subscription's free off-peak capacity instead of your plan quota. The server decides when it starts: `send --offpeak` takes a ticket and queues, and the turn runs once the ticket is ready. Acceptance is the same as a normal send. Requirements: an individual Coding Plan account login in the ZCode app, and a session model on the off-peak model list. The session must be idle; while an off-peak send is queued or running, normal sends to that session are refused, so use a separate session for off-peak work. Expired tickets are retaken automatically (up to three tickets per send), `cancel` settles the ticket at any stage, and `quota` shows today's usage (roughly three tickets a day observed). Normal sends stay the default; the skill tells you when off-peak is available and only switches when you ask.
+Exit codes: `0` done · `1` usage / cannot start · `2` refused (whitelist, unknown session, bad tier) · `3` `--wait` timed out (turn cancelled) · `4` turn failed / cancelled · `5` **blocked, waiting for a human** (permission or question).
 
 ## Configuration
 
@@ -283,107 +276,22 @@ An off-peak send runs the turn on the Coding Plan subscription's free off-peak c
 | `waitTimeoutSec` | `3600` | `send --wait` timeout; the turn is stopped when it fires |
 | `preferredProvider` | account individual plan › account team plan › `config.json` coding plan | Which provider to pick when the same model exists under several, e.g. `account:bigmodel-team-coding-plan` |
 | `tiers` | auto by name | Override which model is `fast` / `strong` |
-| `review` | `{enabled, model, thought:"low", fastMaxTokens:300, slowMaxTokens:2000, timeoutMs:60000}` | Model review: on/off, ZCode model (default: the `fast` tier), thought level, token budgets, per-call timeout |
-| `review.jev.apiKey` | absent | A non-blank key enables Jev pre-screening ahead of ZCode `fast` + `review.thought` (default `low`); absent or all-whitespace keeps the original ZCode chain |
-| `review.jev.proxy` | absent | Optional `http(s)://` proxy URL (userinfo allowed, sent as Basic `Proxy-Authorization`). Jev HTTPS requests then go through this proxy's CONNECT tunnel. Ignored when `review.jev.apiKey` is absent |
-| `review.jev.model` | `jev-latest` | Optional Jev model ID or alias. The screening threshold and schema were tuned against `jev-1.13.0`; pinning to a version restores the old behavior |
-| `environment` / `sensitive` | `[]` | Extra facts and sensitive locations shown to ZCode review calls (not sent to Jev) |
-
-### Optional: enable Jev pre-screening
-
-[Jev](https://docs.typesafe.ai/introduction) is TypeSafe's structured decision model: it returns probabilities rather than explanations. It **does not execute tasks or replace the original ZCode fast screen**. It only tries to pass actions early when the evidence is sufficient:
-
-```text
-After hard-rule and allow_once checks
-  → Jev pre-screen: pass early, otherwise continue
-  → ZCode fast screen (default fast + low): pass, otherwise continue
-  → ZCode slow review: allow or ask a human
-```
-
-- Five risk checks cover task-boundary conflicts, writes outside the workspace, credential exposure or sensitive-data exfiltration, destructive/external side effects, and unrelated actions. The model defaults to the `jev-latest` alias (configurable via `review.jev.model`); all five probabilities must be at most `0.20` for early approval. This is a screening threshold, not a safety guarantee.
-- Write/Edit/MultiEdit bodies are not sent to Jev; these actions currently skip pre-screening locally. Missing intent, truncated required input, or credentials that cannot be reliably redacted also cause a local skip, with **no Jev HTTP request**. Command complexity alone is not a reason to skip.
-- Jev flags, timeouts, network errors, and invalid responses go to the original ZCode fast screen—not directly to denial or mandatory slow review. A failed ZCode fast-screen call still asks a human.
-- Early passes can save subsequent review calls; other requests add serial latency. Jev currently has a 10-second total budget, separate from ZCode's `review.timeoutMs`. Actual speed and cost benefits depend on the pass rate.
-
-#### 1. Configure the API key
-
-Obtain your own API key from [TypeSafe](https://typesafe.ai/) (see the [official quick start](https://docs.typesafe.ai/introduction/quickstart)). It is separate from your ZCode provider key; do not edit ZCode App's configuration for this.
-
-Edit `~/.zcode-executor/config.json`. **Merge the `review.jev` field into your existing configuration; keep allowedRoots, provider settings, and other fields rather than replacing the whole file.** If you set `ZCODE_EXECUTOR_HOME`, edit `config.json` in that directory instead.
-
-Never put a real key in a command argument, shell environment, checked-in example, issue, or log. The value below is only a placeholder; real keys need not use that prefix:
-
-```json
-{
-  "review": {
-    "jev": {
-      "apiKey": "jev_REPLACE_WITH_YOUR_KEY"
-    }
-  }
-}
-```
-
-Optional: if Jev requests must go through a proxy (e.g. the endpoint is unreachable directly), add `proxy` under the same `review.jev` object. It accepts an `http://` or `https://` proxy URL and supports `user:pass@` credentials. Only Jev's HTTPS calls use it—the ZCode dispatch chain and app-server traffic are unaffected. `socks5://` is not supported:
-
-```json
-{
-  "review": {
-    "jev": {
-      "apiKey": "jev_REPLACE_WITH_YOUR_KEY",
-      "proxy": "http://127.0.0.1:7890"
-    }
-  }
-}
-```
-
-#### 2. Protect the configuration file
-
-The file must already exist. Restrict its permissions (adjust the path if you use a custom configuration directory):
-
-```bash
-chmod 600 ~/.zcode-executor/config.json
-```
-
-When `review.jev.apiKey` is set, `config.json` must be a regular, non-symlink file owned by the current UID and accessible only by that owner (`0600` or stricter). Otherwise zcode-executor refuses to load it. There is no environment-variable fallback and no Jev mode or shadow setting. Remove `apiKey` (or leave it all-whitespace) to use only the original ZCode review chain. Setting `review.enabled` to `false` disables **all** model review, including Jev; hard rules still apply and other permission requests wait for a human.
-
-#### 3. Verify configuration and activation
-
-```bash
-zcode-executor doctor --json
-```
-
-With review enabled and a key configured, the output should include:
-
-```json
-"review": {
-  "enabled": true,
-  "fastScreen": "jev",
-  "jevConfigured": true,
-  "pipeline": ["jev", "zcode-fast", "zcode-slow"]
-}
-```
-
-`doctor` does not call Jev. It confirms configuration and the selected chain, **not TypeSafe key validity, account credit, or network connectivity**. This excerpt is part of the full JSON response; `fastScreen` is a compatibility field, not an indication that ZCode's fast screen was replaced.
-
-Newly started runners read the configuration; existing runners do not hot-reload it. Let the current runner exit before sending another turn to pick up changes. Actual approvals record `pass / flag / error / skip` and filtered diagnostics in `executor.gate.preScreen`, never the key or full Jev state.
-
-**To disable only Jev:** remove `review.jev.apiKey`, keeping the original ZCode fast and slow review chain. Do not use `review.enabled:false` for this—it disables all model review.
 
 ## Safety model
 
 - **Hard rules** are code constants, never configuration: any path-bearing tool writing outside the worktree stops for a human. The rule table follows the categories of Claude Code's auto mode (credentials, exfiltration, destructive git, deletion, supply chain, persistence, deploys, shared resources, external writes).
-- **The reviewers never deny.** Their only final outputs are *allow* and *ask*. Jev flag/error/skip returns to the ZCode fast screen, then slow review if needed. A ZCode fast-call failure still asks a human.
-- **Allow only when allowed.** Automatic approval and `approve` both require an `allow_once` option; there is no "always allow".
-- **Secrets are tightly scoped.** ZCode's provider key still goes only to the app-server path. The optional Jev key is the one deliberate persistent secret: it lives only in owner-protected `config.json`, is sent only as Jev authorization, and is never copied to events, pending state, runner logs or the app-server process.
+- **The gate never denies.** Its only outcome is *ask* — a hard-rule hit carries the rule id, everything else says why it stopped. Deciding allow or deny is always a human's (or the head agent's) move.
+- **Allow only when allowed.** `approve` requires an `allow_once` option; there is no "always allow" and no automatic approval.
+- **Secrets are tightly scoped.** ZCode's provider key goes only to the app-server path; known secret values are scrubbed from `pending.json`, events and logs.
 - **Answers are bound to requests.** Every `approve`/`deny`/`answer` carries the request id; stale answers are discarded.
-- **The gate guards itself.** Anything that touches zcode-executor's own data directory (except the default `worktrees/` root and the current session's worktree) or invokes the `zcode-executor` CLI stops for a human. The executor runs as the same OS user as the runner, so this only catches plain spellings: variable splicing or a script written first and run later is not recognised and still relies on model review and the human.
-- **The approval basis is frozen at send time.** The task file is snapshotted when the turn is queued and model review reads only the snapshot; editing the task file afterwards cannot change what review sees as "what the user said".
+- **The gate guards itself.** Anything that touches zcode-executor's own data directory (except the default `worktrees/` root and the current session's worktree) or invokes the `zcode-executor` CLI stops for a human. The executor runs as the same OS user as the runner, so this only catches plain spellings: variable splicing or a script written first and run later is not recognised and still relies on the human.
+- **The approval basis is frozen at send time.** The task file is snapshotted when the turn is queued; editing the task file afterwards cannot change what the pending answer can be checked against as "what the user said".
 - **Host-agent credentials are not passed down.** `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GITHUB_TOKEN`, `GH_TOKEN` and similar variables are stripped when ZCode is spawned; add `--deny "WebFetch WebSearch"` when the task does not need network access. This removes those two tools; Bash, js and MCP tools can still access the network.
 
 ## Development
 
 ```bash
-npm test          # 817 cases against a scripted mock app-server and mock off-peak server, plus a doc-version drift check; no tokens spent
+npm test          # 475 cases against a scripted mock app-server, plus a doc-version drift check; no tokens spent
 node --check lib/**/*.mjs
 ```
 
@@ -397,15 +305,11 @@ See also the [DSH plugin](docs/dsh-plugin.md) and [protocol reference](docs/refe
 
 **Does it work with agents other than ZCode?** No, by design. The executor side is ZCode only; the planning side can be Claude Code, Codex or anything that runs a shell.
 
-**Why not just let Claude edit the code?** Cost and isolation. ZCode's GLM coding plan is credit-based and far cheaper than frontier-model tokens (inside ZCode it is billed at a 67% discount, with a free off-peak quota on top), and the worktree keeps two agents from editing the same files.
+**Why not just let Claude edit the code?** Cost and isolation. ZCode's GLM coding plan is credit-based and far cheaper than frontier-model tokens (inside ZCode it is billed at a 67% discount), and the worktree keeps two agents from editing the same files.
 
-**How much does a task cost?** Measured in tokens, a one-file change is roughly 30–65k input on ZCode's side (its system prompt is heavy); the review adds about 5k input and 2 seconds per fast screen. Billed against the coding plan's credits at ZCode's discounted rate, that is a small fraction of doing the same edit with a frontier model.
+**How much does a task cost?** Measured in tokens, a one-file change is roughly 30–65k input on ZCode's side (its system prompt is heavy). Billed against the coding plan's credits at ZCode's discounted rate, that is a small fraction of doing the same edit with a frontier model.
 
-**What if Jev cannot decide?** Flag, timeout, error or invalid response returns to the original ZCode fast screen. A non-passing or unparseable fast result goes to slow review; a failed fast call asks you directly (exit code 5).
-
-Jev is skipped locally, with no HTTP request, when action bodies are omitted, intent is missing, or required input is truncated. Command complexity alone is not a reason to skip or reject.
-
-`doctor --json` reports `review.pipeline`: `['jev','zcode-fast','zcode-slow']` with a key, the last two without one, `[]` when disabled, and `null` on configuration failure. The legacy `fastScreen` field does not mean Jev replaces ZCode.
+**What happened to model review and off-peak sends?** This is a lean fork: the gate is mechanical (hard rules, then a human) and dispatch is always a normal send. See [LEAN-FORK.md](LEAN-FORK.md).
 
 ## License
 

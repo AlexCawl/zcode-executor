@@ -1,6 +1,6 @@
 // send --start-plan 与 runner start plan 部分的行为测试（decisions D21，任务 T8）：
-// 全部对 test/mock-appserver.mjs 跑，夹具与环境变量见 test/offpeak-fixture.mjs（共用，不起闲时服务器也要起：
-// setup 的固定形状）；不碰真网络、不读真实 ~/.zcode。start plan 没有号：没有取号、等号与结算。
+// 全部对 test/mock-appserver.mjs 跑，夹具与环境变量见 test/startplan-fixture.mjs；
+// 不碰真网络、不读真实 ~/.zcode。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -10,7 +10,7 @@ import path from 'node:path';
 import { readRecord, waitFor } from './helpers.mjs';
 import {
   assertNoSecrets, cleanupAll, isAlive, lay, readEvents, readJson, runBin, setup, startRunner, TEST_JWT, trackPids, waitRunnerGone,
-} from './offpeak-fixture.mjs';
+} from './startplan-fixture.mjs';
 
 test.after(cleanupAll);
 
@@ -21,13 +21,6 @@ test('send --start-plan --steer：用法错，退出码 1，不入队', async (t
   const r = await runBin(s.env, ['send', s.entry.id, '活', '--start-plan', '--steer']);
   assert.equal(r.status, 1, r.stderr);
   assert.match(r.stderr, /--start-plan.*--steer|--steer.*--start-plan/);
-});
-
-test('send --offpeak --start-plan：用法错，退出码 1，一次投递只走一条通道', async (t) => {
-  const s = await setup(t, { tier: 'fast' });
-  const r = await runBin(s.env, ['send', s.entry.id, '活', '--offpeak', '--start-plan']);
-  assert.equal(r.status, 1, r.stderr);
-  assert.match(r.stderr, /--offpeak.*--start-plan|--start-plan.*--offpeak/);
 });
 
 // ---------- 前置条件（退出码 2） ----------

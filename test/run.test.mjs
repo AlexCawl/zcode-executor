@@ -10,7 +10,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startMock, readRecord, killAll, waitFor } from './helpers.mjs';
-import { createConfiguredFastScreen } from '../lib/run.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = path.join(ROOT, 'bin', 'zcode-executor');
@@ -21,78 +20,6 @@ test.after(async () => {
   killAll(runnerPids);
   killAll(mockPids);
   for (const dir of dirs) await rm(dir, { recursive: true, force: true });
-});
-
-test('createConfiguredFastScreen：仅非空 config key 启用，disabled 与无 key 均保持 ZCode fallback', async () => {
-  const calls = [];
-  const ids = [
-    'scope_conflict', 'outside_worktree_write', 'credential_or_exfiltration',
-    'destructive_or_external', 'unrelated_or_gratuitous',
-  ];
-  const fetchImpl = async (_url, init) => {
-    calls.push(init);
-    return {
-      ok: true,
-      status: 200,
-      headers: { get: () => null },
-      json: async () => ({
-        model: 'jev-1.13.0',
-        answers: Object.fromEntries(ids.map((id) => [id, { type: 'noul', noul: 0.01 }])),
-      }),
-    };
-  };
-  assert.equal(createConfiguredFastScreen({ review: { enabled: true, jev: {} } }, { fetchImpl }), undefined);
-  assert.equal(createConfiguredFastScreen({ review: { enabled: false, jev: { apiKey: 'never-use' } } }, { fetchImpl }), undefined);
-
-  const screen = createConfiguredFastScreen(
-    { review: { enabled: true, jev: { apiKey: 'jev_runner_secret' } } },
-    { fetchImpl, knownSecrets: ['provider-secret'] },
-  );
-  const result = await screen(
-    { toolName: 'Bash', args: { command: 'npm test' }, workspaceRoot: '/w' },
-    { intent: [{ source: 'task', text: 'run provider-secret tests' }] },
-  );
-  assert.equal(result.decision, 'pass');
-  assert.equal(calls.length, 1);
-  assert.match(calls[0].headers.Authorization, /^Bearer /);
-  assert.equal(calls[0].body.includes('jev_runner_secret'), false);
-  assert.equal(calls[0].body.includes('provider-secret'), false);
-});
-
-test('createConfiguredFastScreen：代理只随 key 生效，显式 fetchImpl 优先于代理（D24）', async () => {
-  // 只配代理不配 key：不启用，保持 ZCode fallback
-  assert.equal(createConfiguredFastScreen({ review: { enabled: true, jev: { proxy: 'http://127.0.0.1:1' } } }), undefined);
-
-  // key + 代理（指向必死的端口）+ 显式 fetchImpl：fetchImpl 胜出，代理传输不构造；
-  // 若走错代理这条 fetch 必失败，pass 即证明走的是显式 fetchImpl
-  const ids = [
-    'scope_conflict', 'outside_worktree_write', 'credential_or_exfiltration',
-    'destructive_or_external', 'unrelated_or_gratuitous',
-  ];
-  const calls = [];
-  const fetchImpl = async () => {
-    calls.push(1);
-    return {
-      ok: true,
-      status: 200,
-      headers: { get: () => null },
-      json: async () => ({
-        model: 'jev-1.13.0',
-        answers: Object.fromEntries(ids.map((id) => [id, { type: 'noul', noul: 0.01 }])),
-      }),
-    };
-  };
-  const screen = createConfiguredFastScreen(
-    { review: { enabled: true, jev: { apiKey: 'k', proxy: 'http://127.0.0.1:1' } } },
-    { fetchImpl },
-  );
-  assert.equal(typeof screen, 'function');
-  const result = await screen(
-    { toolName: 'Bash', args: { command: 'true' }, workspaceRoot: '/w' },
-    { intent: [{ source: 'task', text: 'noop' }] },
-  );
-  assert.equal(result.decision, 'pass');
-  assert.equal(calls.length, 1);
 });
 
 const ZCODE_CONFIG = {
@@ -134,7 +61,7 @@ async function setupSend(t, { script, deny, tier = 'strong', zcodeConfig = ZCODE
   const repo = path.join(workParent, 'repo');
   execFileSync('git', ['init', '--quiet', repo]);
   execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '--allow-empty', '--quiet', '-m', 'init'], { cwd: repo });
-  await writeFile(path.join(home, 'config.json'), JSON.stringify({ allowedRoots: [workParent], review: { enabled: false } })); // T3.2：这组测的是挂起管线本身，模型审批关掉（开了会自动放行）
+  await writeFile(path.join(home, 'config.json'), JSON.stringify({ allowedRoots: [workParent] })); // T3.2：这组测的是挂起管线本身，模型审批关掉（开了会自动放行）
   const zcodeConfigDir = await mkdtemp(path.join(os.tmpdir(), 'zcode-run-zconfig-'));
   dirs.push(zcodeConfigDir);
   const zcodeConfigPath = path.join(zcodeConfigDir, 'config.json');

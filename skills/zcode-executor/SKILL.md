@@ -1,6 +1,6 @@
 ---
 name: zcode-executor
-description: 把一件已经想清楚的开发任务交给本机 ZCode（GLM）执行，在隔离的执行副本里改代码，用 git diff 和测试验收。当用户说「让 zcode 去做」「派给 zcode」「派给执行端」，或者当前会话负责规划、实际改代码要交给 zcode 时使用。也用于闲时投递（用户选择时）、查看 zcode 会话状态、给正在跑的回合插话、应答挂起的审批请求或提问。
+description: 把一件已经想清楚的开发任务交给本机 ZCode（GLM）执行，在隔离的执行副本里改代码，用 git diff 和测试验收。当用户说「让 zcode 去做」「派给 zcode」「派给执行端」，或者当前会话负责规划、实际改代码要交给 zcode 时使用。也用于查看 zcode 会话状态、给正在跑的回合插话、应答挂起的审批请求或提问。
 ---
 
 # 把任务派给 zcode 执行
@@ -22,17 +22,13 @@ description: 把一件已经想清楚的开发任务交给本机 ZCode（GLM）�
 
 1. **任务单是契约，消息只是门铃。** 任务内容全部写进任务单文件，投递正文一句「执行 tasks/T-xxx.md」就够——
    zcode 是有自己判断的完整 agent，一段话过去它会自己重新理解，任务单才是事后对账的依据。
-   所以 `send` 必带 `--task`：不给任务单，模型审批看不到你授权了什么，越界判断没有依据，几乎全部转人工。
-   审批认的是**投递那一刻**的任务单内容（入队时留了快照）：之后再改文件，审批看不到，带着 `--task` 再投一次才算数。
+   所以 `send` 必带 `--task`：不给任务单，挂起转给你时应答就没有授权依据，越界判断没有参照，几乎全部得问人。
+   应答认的是**投递那一刻**的任务单内容（入队时留了快照）：之后再改文件，挂起应答看不到，带着 `--task` 再投一次才算数。
 2. **验收看 `git diff` 和测试，不看它怎么说。** 回合结束带回来的回答只是执行端自述。判断做没做对，
    一律回主仓看 diff、在执行副本里跑测试、读产物文件。
 3. **反复投同一条会话三四轮还没过，回去改任务单。** 通常问题出在任务描述不清，不是多投几次能解决的。
    改法：写 `tasks/T-xxx-fix.md` 说明差在哪，再投同一条会话（它有上下文，带着上下文返工）。
 4. **挂起先分流，不替用户批越界。** 先核对任务单、用户已有授权和具体操作：能确认且规则允许主 agent 处理的，按「退出码 5」应答；越界、无法确认或上层指令要求人工确认的，带判断依据转用户。挂起本身不是危险判据，也不是放行依据；本 skill 不覆盖宿主的审批限制。
-5. **Jev 只由配置启用前筛。** 非空白 `review.jev.apiKey` 启用提前通过层；pass 结束审批，flag/error/skip 回到
-   原 ZCode `fast` + `review.thought`（默认 `low`）快筛，未通过或无法解析才慢判；原快筛调用失败仍转人工。
-   正文省略、缺有效意图或必要输入截断时本地 skip，不发 HTTP；复杂命令本身不是跳过理由。无 key 保留原链，
-   无环境变量 fallback 或 mode/shadow；`review.enabled:false` 关闭全部模型审批。
 
 ## 一个任务的完整走法
 
@@ -51,7 +47,7 @@ git -C <主仓绝对路径> worktree add "$WT" -b task/T-xxx    # 首次：在 $
 # 3. 建会话：只做零 token 登记，返回本地 id（x_ 开头）；zcode 会话第一次投递时才建
 zcode-executor new --cwd "$WT" --title T-xxx --tier fast --json
 
-# 每个对话第一次派单前：zcode-executor quota（零额度），按「闲时投递」一节的话术告诉用户，然后照常普通投递
+# 每个对话第一次派单前没有额外步骤，照常普通投递
 # 4. 非阻塞投递（--task 必带），随后用后台任务起 follow <id>；按「工作模式」推进独立工作
 #    消息里的 tasks/T-xxx.md 是让 zcode 自己在执行副本里读的相对路径，所以任务单必须放在 $WT 里；
 #    --task 给的是模型审批看的授权依据，用绝对路径
@@ -82,9 +78,9 @@ git -C <主仓绝对路径> log --oneline -1                # 切新分支前核
 git -C "$WT" checkout -b task/T-yyy main              # 切新分支：在执行副本
 ```
 
-## 模型等级、思考等级与 Jev 前筛
+## 模型等级与思考等级
 
-按等级选 ZCode 模型，不写模型名——模型换代不用改习惯。`models` 能看每个等级当前分到了谁。Jev 只增加可选前筛，不改变执行会话的 `--tier`，原 ZCode 快筛与慢判仍保留。
+按等级选 ZCode 模型，不写模型名——模型换代不用改习惯。`models` 能看每个等级当前分到了谁。
 
 | 活儿 | 建议 |
 | --- | --- |
@@ -98,33 +94,13 @@ git -C "$WT" checkout -b task/T-yyy main              # 切新分支：在执行
 - **原 zcode 会话上下文超过 1M token 就换新会话派单。** 会话越长每次投递的固定开销越大、执行效率越低；
   旧会话攒的上下文对新任务多半是噪声。新任务一律新会话（必要时配新副本），把任务单和必要 diff 移交过去。
 
-可选启用 Jev 前筛时，编辑 `~/.zcode-executor/config.json`；**不要**把真实 key 放进命令参数、环境变量、任务单、聊天消息或仓库文件：
-
-```json
-{
-  "review": {
-    "jev": {
-      "apiKey": "jev_请替换为用户自己的密钥"
-    }
-  }
-}
-```
-
-保存后必须执行：
-
-```bash
-chmod 600 ~/.zcode-executor/config.json
-```
-
-含 key 的配置文件必须由当前 UID 拥有、是普通非符号链接文件且权限不宽于 `0600`，否则命令会报配置错误。删除 `apiKey` 或留成全空白可只走原 ZCode 链；不要找 Jev 环境变量或 mode/shadow 开关。`doctor` 显示新 runner 的审批链，不联网调用 Jev、不显示 key：`review.pipeline` 有 key 为 `['jev','zcode-fast','zcode-slow']`，无 key 为后两项，禁用为 `[]`，配置错误为 `null`。兼容 `fastScreen` 不表示替代原快筛。
-
 ## 退出码与应对
 
 | 码 | 含义 | 你该做什么 |
 | --- | --- | --- |
 | 0 | 回合干完了 | 去验收，别直接信它说完成了 |
-| 1 | 用法错、zcode 起不来（含 ZCode App 早于 3.12） | 看报错；环境问题跑 `zcode-executor doctor`（不花额度的自检）。它退出码 1 时先看是哪一步不过：只有 ⑤ 闲时接口变了的话，普通派单照常能用 |
-| 2 | 被拒：白名单外、会话不在登记簿、等级或思考等级不合法；闲时投递被拒 | 报错里写了原因，按原因处理，别原样重试；闲时的见「闲时投递」一节 |
+| 1 | 用法错、zcode 起不来（含 ZCode App 早于 3.12） | 看报错；环境问题跑 `zcode-executor doctor`（不花额度的自检） |
+| 2 | 被拒：白名单外、会话不在登记簿、等级或思考等级不合法 | 报错里写了原因，按原因处理，别原样重试 |
 | 3 | `send --wait` 超时（默认 3600 秒，`--timeout` 可改），**当前回合已取消**，会话还在 | 直接再投一次接着做；`follow` 的超时不取消任何东西，只是旁观者到点走了 |
 | 4 | 回合异常：报错、被中止、撞输出上限 | 读 reason；撞上限就把任务拆小再投 |
 | 5 | 挂起等人：审批请求或提问 | 见下一节，别想办法绕过去 |
@@ -167,10 +143,10 @@ zcode-executor cancel <id>                                # 叫停：挂起的�
   `list` 每行的 `[phase]` 同一套词，没有 running / pending 就是没有在跑的会话。
 - 要边跑边看，`send` / `follow` 加 `--stream`：工具调用摘要和成型回答打到 stderr。
 
-## 闲时投递与 start plan 投递
+## start plan 投递
 
-走闲时（`--offpeak`）或 Start Plan（`--start-plan`）额度前，先读 `references/offpeak-and-start-plan.md`：
-什么时候提闲时、`quota` 话术、取号/排号/恢复的完整命令、退出码 2 的取号被拒对照表、cron 健康检查都在那里。
+走 Start Plan（`--start-plan`）额度前，先读 `references/start-plan.md`：
+前置条件、完整命令与被拒对照表都在那里。
 
 ## 两种会话 id
 
@@ -184,21 +160,16 @@ zcode-executor cancel <id>                                # 叫停：挂起的�
   那是保护不是障碍；两个 agent 同时改同一批文件会互相覆盖。
 - **不要把「zcode 说改好了」当验收写进汇报。** 验收只认 `git diff` 和测试结果（铁律 2）。
 - 不要投第四轮。三四轮没过，改任务单（铁律 3）。
-- **任务单里别写凭据。** 任务单会作为授权依据进入模型审批；启用 Jev 且通过本地证据检查时，脱敏后的任务契约与操作摘要会送往 TypeSafe；必要内容被截断则本地跳过。
-- **不要用 shell 参数或环境变量配置 Jev key。** 唯一入口是受 `0600` 保护的 `review.jev.apiKey`；示例永远用占位值。
+- **任务单里别写凭据。** 任务单是挂起应答的授权依据，也会随事件落盘留在本机。
 
 ## 命令速查
 
 ```bash
-zcode-executor doctor [--json]                  # 不花额度的自检：zcode、配置、握手、等级、新 runner 的审批链、闲时接口（⑤ 会联网，每跑一次留一条自检会话）
-zcode-executor doctor --offpeak [--json]        # 只查闲时接口（同样留一条自检会话）；只有退出码 1（接口变了）要处理
-zcode-executor quota [--json]                   # 今天本工具取过几次闲时号、服务器现在能不能取；零额度，不取号
+zcode-executor doctor [--json]                  # 不花额度的自检：zcode、配置、握手、等级
 zcode-executor models [--json]                  # 可用模型、思考等级、禁用原因、自动分到哪个等级
 zcode-executor list [--project 关键字] [--json]  # 登记簿里的会话：本地 id、sess_、上次结果、是否挂起
 zcode-executor new --cwd <绝对路径> [--title T] [--tier fast|strong] [--thought 档] [--deny "工具…"] [--provider id] [--json]
 zcode-executor send <id> <正文|-> [--task 文件] [--wait] [--steer] [--timeout 秒] [--stream] [--json]
-zcode-executor send <id> <正文|-> --offpeak [--task 文件] [--wait] [--timeout 秒] [--stream] [--json]  # 闲时投递：当场取号
-zcode-executor send <id> --offpeak --resume [--wait] [--stream] [--json]  # 接着跑没收尾的闲时投递
 zcode-executor send <id> <正文|-> --start-plan [--task 文件] [--wait] [--timeout 秒] [--stream] [--json]  # Start Plan 额度
 zcode-executor follow <id> [--timeout 秒] [--stream] [--json]
 zcode-executor status <id> [--tools N] [--json]  # 在跑/空闲/挂起/异常结束、最近工具调用、队列长度
@@ -226,4 +197,4 @@ zcode-executor answer <id> <值…>                 # 应答挂起的提问：�
   任务要用 GitHub 凭据时靠本机已登录的 `gh` / git 凭据助手，别指望环境变量。
 - `--json` 给机器可读结构，脚本化处理时用；输出里的 `id` 都是本地 id。
 - cwd 会解析成真实路径存进登记簿（macOS 的 `/tmp/x` 会变成 `/private/tmp/x`），`list --project` 按解析后的路径匹配。
-- 数据目录 `~/.zcode-executor/`（`ZCODE_EXECUTOR_HOME` 可改）：`sessions.json` 登记簿，`runs/<id>/` 里有 `events.jsonl`（zcode 事件与闸门决定）、`last.json`、`pending.json`、`offpeak.json`（闲时投递时）、`runner.log`。
+- 数据目录 `~/.zcode-executor/`（`ZCODE_EXECUTOR_HOME` 可改）：`sessions.json` 登记簿，`runs/<id>/` 里有 `events.jsonl`（zcode 事件与闸门决定）、`last.json`、`pending.json`、`runner.log`。

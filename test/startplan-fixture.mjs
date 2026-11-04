@@ -1,10 +1,10 @@
-// 闲时投递集成测试的公共夹具（test/offpeak-send.test.mjs 与 test/offpeak-retake.test.mjs 共用）：
-// 造环境（mock app-server + mock 闲时服务器 + 家目录 + new 一条会话）、异步跑 bin、登记与清理后台进程、
+// start plan 集成测试的公共夹具（test/startplan-send.test.mjs 与 test/startplan.test.mjs 共用）：
+// 造环境（mock app-server + 家目录 + new 一条会话）、异步跑 bin、登记与清理后台进程、
 // 读落盘文件、泄密检查、用文件布置现场。只服务测试；不碰真网络、不读真实 ~/.zcode。
-// ZCODE_EXECUTOR_OFFPEAK_ORIGIN 指向本进程里的 mock 闲时服务器，ZCODE_EXECUTOR_OFFPEAK_POLL_MS 压短轮询，
-// ZCODE_EXECUTOR_OFFPEAK_SETTLE_RETRY_MS 压短结算重试间隔，ZCODE_DATA_BASE_DIR 指进夹具。
-// CLI 必须异步起（spawn 而非 spawnSync）：send 当场取号，mock 闲时服务器跑在本进程的事件循环里，同步等子进程会卡死。
+// ZCODE_DATA_BASE_DIR 指进夹具。
+// CLI 必须异步起（spawn 而非 spawnSync）：mock app-server 跑在本进程的事件循环里，同步等子进程会卡死。
 // runner 是 detached 的：setup 给每个用例挂 t.after 杀进程，测试文件末尾 test.after(cleanupAll) 再统一收尾。
+// （原 offpeak-fixture.mjs，闲时服务器部分随闲时投递移除。）
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { closeSync, existsSync, openSync, readFileSync } from 'node:fs';
@@ -13,24 +13,22 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { encryptForTest, killAll, startMock, waitFor } from './helpers.mjs';
-import { startMockOffPeak } from './mock-offpeak.mjs';
 
 export const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const BIN = path.join(ROOT, 'bin', 'zcode-executor');
 const dirs = [];
-const servers = [];
 const runnerPids = [];
 const mockPids = [];
 
 // 测试用 JWT：够长（scrubValues 只抹 ≥ 8 字符的值），和别的字符串不重叠
-export const TEST_JWT = 'offpeak-send-jwt-header.offpeak-send-jwt-payload.offpeak-send-jwt-signature';
+export const TEST_JWT = 'startplan-jwt-header.startplan-jwt-payload.startplan-jwt-signature';
 
-// legacy config.json：闲时模型表里的 GLM-5.3 系，外加一个不在表里的模型（测前置条件）
+// legacy config.json：start plan 模型表里的 GLM-5.3 系，外加一个不在表里的模型（测前置条件）
 export const ZCODE_CONFIG = {
   provider: {
     'builtin:bigmodel-coding-plan': {
       kind: 'anthropic',
-      options: { apiKey: 'sk-offpeak-test-plan' },
+      options: { apiKey: 'sk-startplan-test-plan' },
       models: {
         'GLM-5.3': { name: 'GLM 5.3', reasoning: { enabled: true, variants: ['low', 'high', 'max'], defaultVariant: 'max' } },
         'GLM-5.3-Flash': {},
@@ -38,38 +36,35 @@ export const ZCODE_CONFIG = {
     },
     'builtin:other': {
       kind: 'anthropic',
-      options: { apiKey: 'sk-offpeak-test-other' },
+      options: { apiKey: 'sk-startplan-test-other' },
       models: { 'GLM-4.6': { name: 'GLM 4.6' } },
     },
   },
 };
 
-/** 每个测试文件末尾 test.after(cleanupAll)：杀 runner 与 mock、关 mock 闲时服务器、删临时目录。 */
+/** 每个测试文件末尾 test.after(cleanupAll)：杀 runner 与 mock、删临时目录。 */
 export async function cleanupAll() {
   killAll(runnerPids);
   killAll(mockPids);
-  for (const s of servers) await s.close();
   for (const dir of dirs) await rm(dir, { recursive: true, force: true });
 }
 
-// 造环境：mock app-server（带账号凭据夹具与 JWT）+ mock 闲时服务器 + 家目录（白名单指到 git 仓库）+ new 一条会话
-export async function setup(t, { script, offpeak = {}, credentials = { jwt: TEST_JWT }, provider = 'builtin:bigmodel-coding-plan', tier = 'strong', envExtra = {} } = {}) {
+// 造环境：mock app-server（带账号凭据夹具与 JWT）+ 家目录（白名单指到 git 仓库）+ new 一条会话
+export async function setup(t, { script, credentials = { jwt: TEST_JWT }, provider = 'builtin:bigmodel-coding-plan', tier = 'strong', envExtra = {} } = {}) {
   t.after(() => {
     killAll(runnerPids);
     killAll(mockPids);
   });
   const mock = await startMock({ script, credentials });
   dirs.push(mock.dir);
-  const server = await startMockOffPeak({ jwt: TEST_JWT, planKey: mock.accountKeys.individual ?? 'unused-plan-key', readyDelayMs: 50, ...offpeak });
-  servers.push(server);
-  const home = await mkdtemp(path.join(os.tmpdir(), 'zcode-offpeak-home-'));
-  const workParent = await mkdtemp(path.join(os.tmpdir(), 'zcode-offpeak-work-'));
-  const tmp = await mkdtemp(path.join(os.tmpdir(), 'zcode-offpeak-tmp-'));
+  const home = await mkdtemp(path.join(os.tmpdir(), 'zcode-startplan-home-'));
+  const workParent = await mkdtemp(path.join(os.tmpdir(), 'zcode-startplan-work-'));
+  const tmp = await mkdtemp(path.join(os.tmpdir(), 'zcode-startplan-tmp-'));
   dirs.push(home, workParent, tmp);
   const repo = path.join(workParent, 'repo');
   execFileSync('git', ['init', '--quiet', repo]);
   execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '--allow-empty', '--quiet', '-m', 'init'], { cwd: repo });
-  await writeFile(path.join(home, 'config.json'), JSON.stringify({ allowedRoots: [workParent], review: { enabled: false } }));
+  await writeFile(path.join(home, 'config.json'), JSON.stringify({ allowedRoots: [workParent] }));
   const zcodeConfigPath = path.join(home, 'zcode-config.json');
   await writeFile(zcodeConfigPath, JSON.stringify(ZCODE_CONFIG));
   const env = {
@@ -77,15 +72,11 @@ export async function setup(t, { script, offpeak = {}, credentials = { jwt: TEST
     ZCODE_BIN: mock.zcodePath,
     ZCODE_EXECUTOR_HOME: home,
     ZCODE_CONFIG_PATH: zcodeConfigPath,
-    ZCODE_EXECUTOR_OFFPEAK_ORIGIN: server.origin,
-    ZCODE_EXECUTOR_OFFPEAK_POLL_MS: '100',
-    ZCODE_EXECUTOR_OFFPEAK_SETTLE_RETRY_MS: '20',
-    ZCODE_EXECUTOR_NO_CAFFEINATE: '1',
     TMPDIR: tmp, // runner 的个人 provider 文件落这里，收场后应当是空的
     ...mock.env,
     ...envExtra,
   };
-  // new 不碰闲时服务器，可以同步跑
+  // new 可以同步跑
   const created = spawnSync(process.execPath, [BIN, 'new', '--cwd', repo, '--provider', provider, '--tier', tier, '--json'], {
     encoding: 'utf8',
     env,
@@ -94,7 +85,7 @@ export async function setup(t, { script, offpeak = {}, credentials = { jwt: TEST
   assert.equal(created.status, 0, `new 失败：${created.stderr}`);
   const entry = JSON.parse(created.stdout);
   const runsDir = path.join(home, 'runs', entry.id);
-  return { mock, server, home, env, entry, tmp, runsDir, zcodeConfigPath, recordPath: mock.env.MOCK_APPSERVER_RECORD };
+  return { mock, home, env, entry, tmp, runsDir, zcodeConfigPath, recordPath: mock.env.MOCK_APPSERVER_RECORD };
 }
 
 /** 异步跑 bin，返回 {status, stdout, stderr}。envExtra 追加进环境（同名覆盖），测试换内置文件用。 */
@@ -170,7 +161,7 @@ export async function waitRunnerGone(runsDir) {
 }
 
 /**
- * 泄密检查：runs 目录全部文件（含 runner.log、events、offpeak.json、state、last、queue）、输出、mock 记录里
+ * 泄密检查：runs 目录全部文件（含 runner.log、events、state、last、queue）、输出、mock 记录里
  * 都查不到 JWT 与 key。extraSecrets：用例中途换上的凭据（比如重新登录后的新 JWT）。
  */
 export async function assertNoSecrets(s, outputs = [], extraSecrets = []) {
@@ -179,20 +170,9 @@ export async function assertNoSecrets(s, outputs = [], extraSecrets = []) {
   for (const secret of secrets) for (const text of texts) assert.equal(text.includes(secret), false, '不能有 JWT 或 key');
 }
 
-/** 直接向 mock 闲时服务器取一个号（布置现场用，不经过 send）；返回 data。 */
-export async function takeTicket(s, offPeakId) {
-  const res = await fetch(`${s.server.origin}/api/v1/off-peak/ticket`, {
-    method: 'POST',
-    headers: { authorization: `Bearer ${TEST_JWT}`, 'x-coding-plan-api-key': s.mock.accountKeys.individual, 'content-type': 'application/json' },
-    body: JSON.stringify({ task_id: offPeakId }),
-  });
-  return (await res.json()).data;
-}
-
-/** 用文件布置现场：offpeak.json（给了才写）与按顺序排好的队列项。 */
-export async function lay(s, { offpeak, queue }) {
+/** 用文件布置现场：按顺序排好的队列项。 */
+export async function lay(s, { queue }) {
   await mkdir(path.join(s.runsDir, 'queue'), { recursive: true });
-  if (offpeak) await writeFile(path.join(s.runsDir, 'offpeak.json'), JSON.stringify(offpeak));
   for (const [i, item] of queue.entries()) {
     const file = path.join(s.runsDir, 'queue', `2026-01-01T00-00-00.000Z-${i + 1}-lay${i}.json`);
     await writeFile(file, JSON.stringify({ task: null, timeoutSec: null, steer: false, queuedAt: new Date().toISOString(), ...item }));
@@ -210,12 +190,6 @@ export async function startRunner(s) {
   return child.pid;
 }
 
-export const offPeakJson = (offPeakId, ticketId, extra = {}) => ({
-  offPeakId, ticketId, ticketCount: 1, phase: 'queued', position: 1, readyDeadline: null, activeDeadline: null,
-  startedAt: null, settledAt: null, unsettledTickets: [], updatedAt: new Date().toISOString(), ...extra,
-});
-export const settleRequests = (s) => s.server.requests.filter((q) => q.path.endsWith('/settle'));
-export const takeRequests = (s) => s.server.requests.filter((q) => q.method === 'POST' && q.path === '/api/v1/off-peak/ticket');
 export const runnerLog = (s) => (existsSync(path.join(s.runsDir, 'runner.log')) ? readFileSync(path.join(s.runsDir, 'runner.log'), 'utf8') : '');
 
 /** 把夹具凭据文件里的 JWT 换成新值（模拟用户在 App 里重新登录）；先写临时文件再 rename，runner 读不到半截。 */

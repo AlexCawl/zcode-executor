@@ -6,9 +6,9 @@
 
 <p align="center"><strong>Claude 规划，ZCode 写码，git 验收。</strong></p>
 
-<p align="center">一个 Claude Code 等多个编码代理都能用的插件：把一件想清楚的开发任务派给本机的 <a href="https://zcode.z.ai">ZCode</a>（GLM）执行，在隔离的 git worktree 里跑，每一次写操作都过「红线 + 模型审批」两道闸，最后用 <code>git diff</code> 和测试验收，而不是听执行端的自述。</p>
+<p align="center">一个 Claude Code 等多个编码代理都能用的插件：把一件想清楚的开发任务派给本机的 <a href="https://zcode.z.ai">ZCode</a>（GLM）执行，在隔离的 git worktree 里跑，每一次写操作都过机械红线闸，其余一律停下等人来批，最后用 <code>git diff</code> 和测试验收，而不是听执行端的自述。</p>
 
-<p align="center"><img src="https://img.shields.io/badge/version-v0.6.1-5B4CF0" alt="v0.6.1"> <a href="https://www.npmjs.com/package/zcode-executor"><img src="https://img.shields.io/npm/v/zcode-executor?label=npm" alt="npm"></a> <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License"> <img src="https://img.shields.io/badge/node-%3E%3D22-green" alt="Node"> <img src="https://img.shields.io/badge/tests-817%20passing-brightgreen" alt="Tests"></p>
+<p align="center"><img src="https://img.shields.io/badge/version-v0.6.1-5B4CF0" alt="v0.6.1"> <a href="https://www.npmjs.com/package/zcode-executor"><img src="https://img.shields.io/npm/v/zcode-executor?label=npm" alt="npm"></a> <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License"> <img src="https://img.shields.io/badge/node-%3E%3D22-green" alt="Node"> <img src="https://img.shields.io/badge/tests-475%20passing-brightgreen" alt="Tests"></p>
 
 ## 为什么
 
@@ -16,7 +16,7 @@ Claude Code 擅长把任务想清楚，ZCode 擅长用很低的成本把代码�
 
 - **任务单是契约。** Claude 写 `tasks/T-xxx.md`，发给 ZCode 的消息只是门铃。
 - **worktree 是沙箱。** ZCode 在 `~/.zcode-executor/worktrees/<仓库名>` 里干活，永远不碰你的主检出。
-- **闸门决定谁来批。** ZCode 每一次工具调用都过红线、模型审批，必要时找人。可选 Jev 前筛能明确通过就提前结束；其余回到原 ZCode `fast` + `low` 快筛，必要时再慢判。模型只会「放行」或「转人工」，从不替你「拒绝」。
+- **闸门决定谁来批。** ZCode 每一次工具调用都过机械红线（执行副本越界、闸门自保），红线之外一律挂起等人——你，或替你做主的头号 agent。闸门从不替你「拒绝」或「放行」。（精简 fork：模型审批链与闲时队列已移除，见 [LEAN-FORK.md](LEAN-FORK.md)）
 - **证据胜过自述。** 验收看 `git diff` 和你的测试。
 
 ## 快速开始
@@ -48,7 +48,7 @@ Claude Code 擅长把任务想清楚，ZCode 擅长用很低的成本把代码�
 ## 两层结构
 
 - **工作流层**：派活与验收。任务单 → 隔离的 worktree → 本地会话 id → 后台 runner → `git diff` 与测试。CLI 命令和 skill 讲的都是这一层。
-- **安全管理层**：自动处理 ZCode 发来的审批请求。逻辑参考 Claude Code 的 **auto 模式**：一张谁也推不翻的红线表，然后是**可选 Jev 前筛 → ZCode 快筛 → 必要时慢判**，判不下来再交给人。Jev 增加提前通过的机会，不替代原快筛。审批模型只会「放行」或「转人工」，从不替你「拒绝」。
+- **安全管理层**：自动处理 ZCode 发来的审批请求：一张谁也推不翻的机械红线表（越出执行副本、碰本工具自己的数据目录），其余一律交给人。闸门只会「转人工」，从不替你「拒绝」或「放行」。
 
 ## 怎么运转
 
@@ -204,7 +204,7 @@ ln -s "$PWD/skills/zcode-executor" ~/.claude/skills/zcode-executor
 
 - macOS 或 Linux，**Windows 暂不支持**。ZCode App 的位置按各平台的惯例找（`/Applications/…`、`/opt/ZCode/…`、`/usr/share/zcode/…`），装在别处就用 `ZCODE_BIN` 指到 `zcode.cjs`。
 - Node ≥ 22（ZCode 的 app-server 要 `node:sqlite`）。
-- 装好并登录过 **3.12.2 及以上**的 ZCode 桌面 App（3.11 及以下不支持）。两种登录方式都行：账号（OAuth）登录的 Coding Plan——CLI 解出 App 存在 `~/.zcode/v2/credentials.json` 里的平台 key（个人版、团队版都认；只读它需要的四个键，闲时投递另读 `zcodejwttoken`）；或 `~/.zcode/v2/config.json` 里的 API-key 型 provider。两个文件都只读，从不写回。
+- 装好并登录过 **3.12.2 及以上**的 ZCode 桌面 App（3.11 及以下不支持）。两种登录方式都行：账号（OAuth）登录的 Coding Plan——CLI 解出 App 存在 `~/.zcode/v2/credentials.json` 里的平台 key（个人版、团队版都认；只读它需要的四个键，start plan 投递另读 `zcodejwttoken`）；或 `~/.zcode/v2/config.json` 里的 API-key 型 provider。两个文件都只读，从不写回。
 
 ## 推荐工作流
 
@@ -224,7 +224,7 @@ zcode-executor 自己就是这么开发出来的：
 **Claude Code**（终端或桌面版 Code 标签页）：输入 `/zcode` 打开一个面板，实时看当前项目派出去的 zcode 会话干到哪了：
 
 - **待处理**：挂起的审批请求（显示完整命令和原因）、提问、执行进程中断；
-- **执行中**：执行端最新一条消息（按 Markdown 显示）、正在用的工具和参数、最近完成的工具（失败标红），闲时投递显示排队位次；
+- **执行中**：执行端最新一条消息（按 Markdown 显示）、正在用的工具和参数、最近完成的工具（失败标红）；
 - **已结束**：刚结束 10 分钟内的显示结果和最后一条消息，更早的一行一条。
 
 消息超过两行时默认只显示前两行，按「展开回复」看全文，按「收起」再折起来。
@@ -240,13 +240,10 @@ Claude 投递时面板会自动打开；状态栏汇总「N 个回合执行中�
 
 | 命令 | 作用 |
 | --- | --- |
-| `doctor [--offpeak] [--json]` | 不花额度的自检：找到 `zcode.cjs` 与内置 provider 文件（ZCode App ≥ 3.12.2）、报两个 provider 来源、真握手一次、报模型等级及新启动 runner 将使用的审批链（不调用 Jev），再自检闲时接口——这一步会联网，并在 zcode 自己的会话库里留一条自检会话。`--offpeak` 只跑这一步 |
-| `quota [--json]` | 今天本工具取过几次闲时号、服务器现在能不能取；不花额度、不起 app-server |
+| `doctor [--json]` | 不花额度的自检：找到 `zcode.cjs` 与内置 provider 文件（ZCode App ≥ 3.12.2）、报两个 provider 来源、真握手一次、报模型等级 |
 | `models [--json]` | 列可用模型：思考等级、分到哪个等级 |
 | `new --cwd <绝对路径> [--title T] [--tier fast\|strong] [--thought 档] [--deny "工具…"] [--provider id] [--json]` | 登记会话（返回本地 id `x_…`）；ZCode 会话在第一次 `send` 时才建 |
-| `send <id> <正文\|-> [--task 文件] [--wait] [--timeout 秒] [--steer] [--stream] [--json]` | 投递；`--wait` 跟到结束或挂起；`--task` 是模型审批拿来当授权依据的任务单；`--steer` 往正在跑的回合插话——插话在下一个工具边界生效，没有边界时排到回合结束后执行 |
-| `send <id> <正文\|-> --offpeak [--task 文件] [--wait] [--timeout 秒] [--stream] [--json]` | 闲时投递：当场取号，号就绪后用 Coding Plan 的免费闲时算力跑这一回合（见下面「闲时投递」） |
-| `send <id> --offpeak --resume [--wait] [--stream] [--json]` | 回合结束或 runner 崩了、闲时投递还没收尾时，重新拉起 runner 接着跑 |
+| `send <id> <正文\|-> [--task 文件] [--wait] [--timeout 秒] [--steer] [--stream] [--json]` | 投递；`--wait` 跟到结束或挂起；`--task` 是挂起应答拿来当授权依据的任务单；`--steer` 往正在跑的回合插话——插话在下一个工具边界生效，没有边界时排到回合结束后执行 |
 | `follow <id> [--timeout 秒] [--stream] [--json]` | 跟看后台 runner 直到有结果或挂起 |
 | `status <id> [--tools N] [--json]` | 只读快照：阶段、最近工具（带命令或路径摘要）、队列、挂起、上次结果 |
 | `list [--project 关键字] [--json]` | 登记簿里的会话：阶段、等级、上次结果；`--json` 带所属仓库 |
@@ -255,11 +252,7 @@ Claude 投递时面板会自动打开；状态栏汇总「N 个回合执行中�
 | `approve <id>` / `deny <id>` | 应答挂起的审批请求（放行只有 `allow_once`） |
 | `answer <id> [--] <值…>` | 应答挂起的提问：按序号、value 或 label；多选逗号分隔 |
 
-退出码：`0` 干完 · `1` 用法错 / 起不来 · `2` 被拒（白名单、会话不在、等级不合法；闲时投递取号前或取号时被拒） · `3` `--wait` 超时（回合已取消） · `4` 回合失败 / 被叫停 · `5` **挂起等人**（审批或提问）。
-
-### 闲时投递
-
-闲时投递让这一回合用 Coding Plan 订阅的免费闲时算力跑，不占套餐额度；开跑时间由服务器决定：`send --offpeak` 先取号排队，号就绪才开跑，验收与普通投递相同。要求在 ZCode App 里用个人版 Coding Plan 账号登录，会话的模型在闲时模型表里。会话要空闲；闲时投递排号或运行期间，同一会话的普通投递会被拒，所以闲时活另开一条会话。号过期自动重取（一次投递最多 3 个号），`cancel` 在任何阶段都会结算号，`quota` 查今天用了几次（观察到每天约 3 次）。默认仍是普通投递，skill 会告诉你能不能改走闲时，你选了才切。
+退出码：`0` 干完 · `1` 用法错 / 起不来 · `2` 被拒（白名单、会话不在、等级不合法） · `3` `--wait` 超时（回合已取消） · `4` 回合失败 / 被叫停 · `5` **挂起等人**（审批或提问）。
 
 ## 配置
 
@@ -271,107 +264,22 @@ Claude 投递时面板会自动打开；状态栏汇总「N 个回合执行中�
 | `waitTimeoutSec` | `3600` | `send --wait` 超时，到点停掉回合 |
 | `preferredProvider` | 账号型个人版 › 账号型团队版 › `config.json` 里的 coding plan | 同名模型在多个 provider 下时选哪个，例如 `account:bigmodel-team-coding-plan` |
 | `tiers` | 按名字自动分 | 手动指定 `fast` / `strong` 的模型 |
-| `review` | `{enabled, model, thought:"low", fastMaxTokens:300, slowMaxTokens:2000, timeoutMs:60000}` | 模型审批：开关、ZCode 模型（默认 `fast` 档）、思考等级、两段预算、单次超时 |
-| `review.jev.apiKey` | 未配置 | 非空白 key 在 ZCode `fast` + `review.thought`（默认 `low`）前启用 Jev 前筛；缺失或全空白时保留原 ZCode 链 |
-| `review.jev.proxy` | 未配置 | 可选 `http(s)://` 代理地址（可带 `user:pass@`，以 Basic `Proxy-Authorization` 发送）。配置后 Jev 的 HTTPS 请求经该代理 CONNECT 隧道发出；未配 `review.jev.apiKey` 时不生效 |
-| `review.jev.model` | `jev-latest` | 可选 Jev 模型 ID 或别名。筛选阈值与 schema 是按 `jev-1.13.0` 定的；钉版本号可回到旧行为 |
-| `environment` / `sensitive` | `[]` | 给 ZCode 模型审批看的环境说明与敏感位置（不发送给 Jev） |
-
-### 可选：启用 Jev 前筛
-
-[Jev](https://docs.typesafe.ai/introduction) 是 TypeSafe 的结构化判断模型，返回概率而不是生成解释。它**不负责执行任务，也不替代原 ZCode 快筛**，只尝试提前通过证据充分的动作：
-
-```text
-红线与 allow_once 检查通过后
-  → Jev 前筛：明确通过就放行；其余进入下一层
-  → ZCode 快筛（默认 fast + low）：通过就放行；未通过进入下一层
-  → ZCode 慢判：放行或转人工
-```
-
-- 前筛检查五类风险：任务边界冲突、工作目录外写入、凭据暴露或敏感数据外发、破坏性或外部副作用、与任务无关的操作。模型缺省 `jev-latest` 别名（可经 `review.jev.model` 指定），五项概率均不高于 `0.20` 才可能提前通过；这是筛选阈值，不是安全保证。
-- Write/Edit/MultiEdit 的正文不发给 Jev，当前这类动作直接本地跳过前筛。缺少有效意图、必要输入被截断或无法可靠脱敏时也跳过，**不产生 Jev HTTP 请求**。命令复杂本身不是跳过理由。
-- Jev 标记风险、超时、网络错误或响应非法，都交给原 ZCode 快筛，而不是直接拒绝或强制慢判。原快筛调用失败仍转人工。
-- Jev 通过可省掉后续审批；未通过则多一段串行等待。Jev 当前总预算为 10 秒，独立于配置中的 ZCode `review.timeoutMs`；速度和费用收益取决于实际通过率。
-
-#### 1. 配置 API key
-
-从 [TypeSafe 官方站点](https://typesafe.ai/) 获取自己的 API key（参考[官方快速开始](https://docs.typesafe.ai/introduction/quickstart)）。它与 ZCode 的 provider key 是两套独立凭据，不需要修改 ZCode App 的配置。
-
-编辑 `~/.zcode-executor/config.json`。**已有配置请合并下面的 `review.jev` 字段，保留 allowedRoots、provider 等其他设置，不要整份覆盖。** 若配置了 `ZCODE_EXECUTOR_HOME`，应编辑该目录下的 `config.json`。
-
-不要把真实 key 放进命令参数、环境变量、提交到仓库的示例、issue 或日志；下面的值仅为占位符，不要求真实 key 使用该前缀：
-
-```json
-{
-  "review": {
-    "jev": {
-      "apiKey": "jev_请替换为你自己的密钥"
-    }
-  }
-}
-```
-
-可选：如果 Jev 端点直连不通、需要走代理，在同一个 `review.jev` 里加 `proxy`。支持 `http://` 或 `https://` 地址与 `user:pass@` 凭据；只有 Jev 的 HTTPS 请求走它，ZCode 派单链路与 app-server 的流量不受影响。不支持 `socks5://`：
-
-```json
-{
-  "review": {
-    "jev": {
-      "apiKey": "jev_请替换为你自己的密钥",
-      "proxy": "http://127.0.0.1:7890"
-    }
-  }
-}
-```
-
-#### 2. 保护配置文件
-
-文件必须已存在；随后收紧权限（自定义配置目录请替换路径）：
-
-```bash
-chmod 600 ~/.zcode-executor/config.json
-```
-
-配置 `review.jev.apiKey` 后，`config.json` 必须由当前 UID 拥有、是普通非符号链接文件，并且只有属主可访问（`0600` 或更严格），否则 zcode-executor 拒绝读取。没有环境变量 fallback，也没有 Jev mode 或 shadow 配置。删除 `apiKey`（或留成全空白）即可只走原 ZCode 审批链。`review.enabled:false` 会关闭包括 Jev 在内的**全部**模型审批；红线仍生效，其余审批请求转人工。
-
-#### 3. 验证与生效
-
-```bash
-zcode-executor doctor --json
-```
-
-审批开启且 key 已配置时，输出应包含：
-
-```json
-"review": {
-  "enabled": true,
-  "fastScreen": "jev",
-  "jevConfigured": true,
-  "pipeline": ["jev", "zcode-fast", "zcode-slow"]
-}
-```
-
-`doctor` 不调用 Jev，所以它只确认配置与所选链路，**不验证 TypeSafe key 是否有效、账户额度或网络连通性**。上述片段位于完整 JSON 输出中；`fastScreen` 是兼容字段，不表示替代原快筛。
-
-配置由新启动的 runner 读取；已有 runner 不热更新，需等它退出后再投递。实际审批的 `executor.gate.preScreen` 会记录 `pass / flag / error / skip` 及筛选后的诊断信息，不记录 key 或完整 Jev state。
-
-**只想停用 Jev：**删除 `review.jev.apiKey`，保留原 ZCode 快筛和慢判。不要用 `review.enabled:false` 代替，它会关闭整个模型审批链。
 
 ## 安全模型
 
 - **红线是代码常量，不是配置。** 带路径的工具写到执行副本之外一律停下等人。规则表的类别沿用 Claude Code auto 模式（凭据、外泄、破坏性 git、删除、供应链、持久化、部署、共享资源、外部写入）。
-- **审批模型从不拒绝。** 最终只产出「放行」或「转人工」。Jev flag/error/skip 都回到 ZCode 快筛，再按需慢判；原快筛调用失败仍直接转人工。
-- **只在允许时放行。** 自动放行和 `approve` 都要求 options 里有 `allow_once`；没有「一直允许」。
-- **密钥严格限域。** ZCode provider key 仍只走 app-server 路径。可选的 Jev key 是唯一主动持久化的密钥：只存在受属主权限保护的 `config.json` 中，只作为 Jev Authorization 发送，绝不复制进事件、挂起状态、runner 日志或 app-server 进程。
+- **闸门从不拒绝。** 唯一结局是「转人工」——红线命中带规则号，其余说明为什么停下；放行或拒绝永远是人（或头号 agent）的决定。
+- **只在允许时放行。** `approve` 要求 options 里有 `allow_once`；没有「一直允许」，也没有自动放行。
+- **密钥严格限域。** ZCode provider key 只走 app-server 路径；已知密钥值在 `pending.json`、事件与日志落盘前按值抹掉。
 - **应答绑定请求。** `approve`/`deny`/`answer` 都带请求 id，陈年应答一律丢弃。
-- **闸门自己也在红线里。** 执行端碰 zcode-executor 的数据目录（默认执行副本根 `worktrees/` 与本会话的执行副本除外）或调 `zcode-executor` 命令，一律停下等人。执行端与 runner 是同一个系统用户，这条只认直白的写法：拼变量、先写个脚本再跑认不出来，仍靠模型审批与人。
-- **审批依据在投递时定格。** 任务单在入队那一刻留快照，模型审批只读快照；执行端事后改任务单文件，改不了审批看到的「用户原话」。
+- **闸门自己也在红线里。** 执行端碰 zcode-executor 的数据目录（默认执行副本根 `worktrees/` 与本会话的执行副本除外）或调 `zcode-executor` 命令，一律停下等人。执行端与 runner 是同一个系统用户，这条只认直白的写法：拼变量、先写个脚本再跑认不出来，仍靠人来判。
+- **审批依据在投递时定格。** 任务单在入队那一刻留快照；执行端事后改任务单文件，改不了挂起应答能对照的「用户原话」。
 - **宿主代理的凭据不带给执行端。** `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`GEMINI_API_KEY`、`GITHUB_TOKEN`、`GH_TOKEN` 等环境变量在拉起 ZCode 时剔掉；任务不需要联网时再加 `--deny "WebFetch WebSearch"`。这只移除这两个工具，Bash、js 和 MCP 工具仍可能联网。
 
 ## 开发
 
 ```bash
-npm test          # 817 个用例对剧本驱动的 mock app-server 与 mock 闲时服务跑，外加文档版本号一致性检查；不花 token
+npm test          # 475 个用例对剧本驱动的 mock app-server 跑，外加文档版本号一致性检查；不花 token
 node --check lib/**/*.mjs
 ```
 
@@ -385,15 +293,11 @@ node --check lib/**/*.mjs
 
 **能接 ZCode 之外的执行端吗？** 不能，这是有意的。执行端只有 ZCode；规划端可以是 Claude Code、Codex 或任何能跑 shell 的代理。
 
-**为什么不直接让 Claude 改代码？** 成本和隔离。ZCode 的 GLM coding plan 是积分制，比前沿模型的 token 便宜得多（在 ZCode 内使用还有 67% 折扣，另有闲时免费额度），worktree 又让两个代理不会改同一批文件。
+**为什么不直接让 Claude 改代码？** 成本和隔离。ZCode 的 GLM coding plan 是积分制，比前沿模型的 token 便宜得多（在 ZCode 内使用还有 67% 折扣），worktree 又让两个代理不会改同一批文件。
 
-**一件任务花多少？** 按 token 算，改一个文件在 ZCode 侧约 3 到 6.5 万输入（它的系统提示很重），审批每次快筛约 5k 输入、2 秒。折成 coding plan 的积分再打 ZCode 的折扣，只是用前沿模型做同一改动的零头。
+**一件任务花多少？** 按 token 算，改一个文件在 ZCode 侧约 3 到 6.5 万输入（它的系统提示很重）。折成 coding plan 的积分再打 ZCode 的折扣，只是用前沿模型做同一改动的零头。
 
-**Jev 拿不准或不可用怎么办？** flag、错误、超时或非法响应都回到原 ZCode 快筛。原快筛未通过或无法解析才进慢判；原快筛调用失败仍直接转人工（退出码 5）。
-
-正文省略、缺少有效意图或必要输入被截断时，本地 skip，不发 Jev HTTP 请求。命令复杂本身不是跳过或拒绝理由。
-
-`doctor --json` 的 `review.pipeline`：有 key 为 `['jev','zcode-fast','zcode-slow']`，无 key 为后两项，禁用为 `[]`，配置失败为 `null`。兼容字段 `fastScreen` 不表示 Jev 替代原快筛。
+**模型审批和闲时投递去哪了？** 这是精简 fork：闸门只保留机械红线，其余挂起等人；投递只有普通方式。见 [LEAN-FORK.md](LEAN-FORK.md)。
 
 ## 许可证
 

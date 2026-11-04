@@ -1,4 +1,4 @@
-// lib/models.mjs 的行为测试：工作流层的模型编排（resolveModels / zcodeInfo / resolveReviewSelection），
+// lib/models.mjs 的行为测试：工作流层的模型编排（resolveModels / zcodeInfo），
 // 全部对 test/mock-appserver.mjs 跑，不发 session/send，不花额度。
 // 3.12 起模型清单从 registry 本地换算，握手（probeHandshake：create + close）只在 handshake:true 时走。
 import test from 'node:test';
@@ -7,7 +7,7 @@ import { mkdtemp, readdir, writeFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { startMock, readRecord } from './helpers.mjs';
-import { resolveModels, resolveReviewSelection, zcodeInfo } from '../lib/models.mjs';
+import { resolveModels, zcodeInfo } from '../lib/models.mjs';
 import { readProviderRegistry } from '../lib/providers.mjs';
 
 // 两个启用的 provider（同名模型并存），模拟本机形状
@@ -194,32 +194,6 @@ test('zcodeInfo：返回路径、版本与内置 provider 文件；环境变量�
   assert.match(stale.builtinConfigError, /nope\.json/);
 });
 
-test('resolveReviewSelection：fast 档 + review.thought（默认 low）→ selection 形状同 create 的 model', async () => {
-  // 显式指两个不存在的来源文件：本用例只关心 legacy，别去读真实机器（T6-C 起 readProviderRegistry 会解账号型来源）
-  const noSuch = (name) => path.join(os.tmpdir(), `zcode-models-no-${name}-${Date.now()}.json`);
-  const registry = readProviderRegistry(await writeZcodeConfig({
-    provider: {
-      'builtin:bigmodel-coding-plan': {
-        kind: 'anthropic',
-        options: { apiKey: 'sk-test-plan' },
-        models: {
-          'GLM-5.3': { reasoning: { enabled: true, variants: ['low', 'high', 'max'], defaultVariant: 'max' } },
-          'GLM-5.3-Flash': { reasoning: { enabled: true, variants: ['low', 'high'], defaultVariant: 'high' } },
-        },
-      },
-    },
-  }), { credentialsPath: noSuch('credentials'), builtinConfigPath: noSuch('builtin') });
-  const providerId = 'builtin:bigmodel-coding-plan';
-  const byDefault = resolveReviewSelection({ registry, providerId, config: {} });
-  assert.deepEqual(byDefault.selection, { providerId: 'zcode-executor', modelId: 'GLM-5.3-Flash', options: { reasoningLevel: 'low' } });
-  assert.equal(byDefault.model.ref.providerId, providerId); // model 条目仍认 config.json 的 id
-  const overridden = resolveReviewSelection({ registry, providerId, config: { review: { model: 'GLM-5.3', thought: 'max' } } });
-  assert.deepEqual(overridden.selection, { providerId: 'zcode-executor', modelId: 'GLM-5.3', options: { reasoningLevel: 'max' } });
-  assert.throws(() => resolveReviewSelection({ registry, providerId: 'no-such', config: {} }), /不在 provider 表里/);
-  assert.throws(() => resolveReviewSelection({ registry, providerId, config: { review: { model: 'nope' } } }), /nope/);
-});
-
-// ---------- T6-C：账号型来源（credentials.json + 内置 provider 文件，2026-09-21） ----------
 
 test('resolveModels：只有 credentials.json、没有 config.json → 选中 account:bigmodel-individual-coding-plan，模型表带 contextWindow', async () => {
   const mock = await startMock({ credentials: {} }); // 默认 bigmodel + 个人版/团队版两把 key
