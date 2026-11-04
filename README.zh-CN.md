@@ -377,7 +377,9 @@ node --check lib/**/*.mjs
 
 发版由 tag 驱动：`npm version patch` 改 `package.json`、把版本号同步进两份 README 和各宿主的插件清单、建提交和 tag；`git push --follow-tags` 触发 workflow 跑测试、发 npm（Trusted Publishing，无令牌）、建 GitHub Release。提交信息就是 changelog。
 
-纯 `.mjs`，零运行时依赖，无构建。设计文档在 `docs/`：[PRD](docs/PRD.md)、[SPEC](docs/SPEC.md)、[CONTEXT](docs/CONTEXT.md)（术语）、[RULES](docs/RULES.md)（开发规范）、[decisions](docs/decisions.md)、[verified](docs/verified.md)（对真 app-server 实测的事实）。给 agent 看的入口是 [AGENTS.md](AGENTS.md)。
+纯 `.mjs`，零运行时依赖，无构建。设计文档在 `docs/`：[PRD](docs/PRD.zh-CN.md)、[SPEC](docs/SPEC.zh-CN.md)、[CONTEXT](docs/CONTEXT.zh-CN.md)（术语）、[RULES](docs/RULES.zh-CN.md)（开发规范）、[decisions](docs/decisions.zh-CN.md)、[verified](docs/verified.zh-CN.md)（对真 app-server 实测的事实）。给 agent 看的入口是 [AGENTS.md](AGENTS.md)。
+
+另见 [DSH 插件](docs/dsh-plugin.zh-CN.md)与[协议参考](docs/reference/zcode-app-server-protocol.zh-CN.md)。文档顶部可切换 English、中文和 Русский。
 
 ## 常见问题
 

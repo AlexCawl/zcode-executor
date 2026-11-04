@@ -1,32 +1,33 @@
-<!-- 来源：zcode-acp-server 0.27.3 docs/PROTOCOL.md（https://github.com/william0wang/zcode-acp，Apache-2.0，作者 William Wang）。
-     复制作为 ZCode app-server 协议参考，2026-09-07。本项目改动：加了「3.12.2 变化」一节，并在失效的段落段首加了标注；其余原文未改。 -->
+<!-- Source: zcode-acp-server 0.27.3 docs/PROTOCOL.md (https://github.com/william0wang/zcode-acp, Apache-2.0, author William Wang).
+     Copied as a ZCode app-server protocol reference on 2026-09-07. Original project changes: a “3.12.2 changes” section and notices at the start of affected obsolete sections; other upstream text was unchanged. This language edition translates prose and adjusts navigation; protocol examples are preserved. -->
 
 # ZCode JSON-RPC Protocol
+
+English · [中文](zcode-app-server-protocol.zh-CN.md) · [Русский](zcode-app-server-protocol.ru.md)
 
 This document describes the internal JSON-RPC protocol between zcode-acp-server
 and the ZCode CLI.
 
-## 3.12.2 变化（2026-09-18 实测）
+## 3.12.2 changes (verified on a real device, 2026-09-18)
 
-> 这一节是本项目加的，不是 zcode-acp-server 原文。协议在 ZCode App 3.12.2 上的变化记在这里；
-> 下文原有段落若描述了被这次改动影响的方法，段首会加一句「3.12 起失效，见顶部」，原文不删，留作
-> 与老版本对照。完整推导过程见 [`decisions.md`](../decisions.md) D14、[`verified.md`](../verified.md)
-> 「3.12.2 直连探针实测」。
+> This section was added by this project; it is not part of the original zcode-acp-server document. It records protocol changes in ZCode App 3.12.2.
+> Original sections describing affected methods are marked “Invalid from 3.12; see above”; the original text is retained for comparison with older versions.
+> For the full reasoning, see [`decisions.md`](../decisions.md) D14 and the “3.12.2 direct-connection probe” section in [`verified.md`](../verified.md).
 
-**被删的方法**：`workspace/updateProviderRegistry`、`workspace/readState` 都返回 `-32601 Method not found`。
-provider 表（哪些 provider、哪些模型、密钥怎么鉴权）改由 app-server 自己从两个文件拼：内置 provider 文件
-+ 个人 provider 文件（两词定义见 [`CONTEXT.md`](../CONTEXT.md)）。
+**Removed methods**: `workspace/updateProviderRegistry` and `workspace/readState` both return `-32601 Method not found`.
+The app-server now assembles its provider table (providers, models, and key authentication) from two files: the builtin provider config file
+and the personal provider config file (both terms are defined in [`CONTEXT.md`](../CONTEXT.md)).
 
-**启动**：新版 CLI 自己去找内置 provider 文件（内部函数 `resolveBundledZCodeBuiltinProviderConfig`），
-只看两处：`zcode.cjs` 同目录下的 `provider/`，和 `zcode.cjs` 往上五级的 `config/provider/`——后者是源码仓库
-的目录层次，打包进 App 后这条路径算出来是磁盘根目录下的 `/config/…`，找不到就报错退出（真实位置是
-`<App>/Contents/Resources/config/provider/zcode-builtin.json`）。App 自己拉起 CLI 时用环境变量告诉它这个
-位置，我们直接 spawn 子进程时没人告诉它，所以要自己算好两个环境变量传进去：
-`ZCODE_BUILTIN_PROVIDER_CONFIG_FILE`（内置 provider 文件路径，从 `zcode.cjs` 路径推出）和
-`ZCODE_PERSONAL_PROVIDER_CONFIG_FILE`（个人 provider 文件路径，我们自己写的一份）。两个都给了，CLI 就原样
-采用、不去 CDN 刷新、也不碰用户的 `~/.zcode/v2/provider_config.json`。
+**Startup**: the new CLI searches for its builtin provider config file itself (internal function `resolveBundledZCodeBuiltinProviderConfig`).
+It checks only `provider/` beside `zcode.cjs`, and `config/provider/` five levels above `zcode.cjs`. The latter reflects the source repository's layout;
+inside the packaged App it resolves to `/config/…` at the filesystem root. A missing file causes an error and exit (the actual location is
+`<App>/Contents/Resources/config/provider/zcode-builtin.json`). When the App launches the CLI, it supplies this location through an environment variable.
+A directly spawned child receives no such hint, so we calculate and pass two variables ourselves:
+`ZCODE_BUILTIN_PROVIDER_CONFIG_FILE` (builtin provider path, derived from `zcode.cjs`) and
+`ZCODE_PERSONAL_PROVIDER_CONFIG_FILE` (the personal provider file we write). When both are set, the CLI uses them as supplied,
+without refreshing from the CDN or touching the user's `~/.zcode/v2/provider_config.json`.
 
-**个人 provider 文件的形状**（照 CLI 自带的 legacy 导入函数 `importLegacyCliPersonalProviderConfig` 抄）：
+**Personal provider file shape** (copied from the CLI's legacy import function `importLegacyCliPersonalProviderConfig`):
 
 ```json
 {"schemaVersion":1,"config":{
@@ -39,26 +40,28 @@ provider 表（哪些 provider、哪些模型、密钥怎么鉴权）改由 app-
   "modelConfigRules":{"providerModelRules":[],"manualProviderModelRules":[]}}}
 ```
 
-**`session/create` 的新参数**（strict schema，多传字段直接报错）：
+The preserved placeholders `<config.json 里的 key>` and `<config.json 里的 baseURL>` mean the key and baseURL from config.json, respectively.
 
-| 字段 | 说明 |
+**New `session/create` parameters** (strict schema: additional fields cause an error):
+
+| Field | Description |
 | --- | --- |
-| `model` | `{providerId, modelId, options?:{reasoningLevel}}`，取代旧版的 `runtimeModel` |
-| `runtimeModel` | 不再接受，带上就报 `Unrecognized key: "runtimeModel"` |
-| `thoughtLevel` | 顶层仍要带（实测只传 `options.reasoningLevel` 时 `settings.thoughtLevel.current` 是空的，两处都给最稳） |
+| `model` | `{providerId, modelId, options?:{reasoningLevel}}`, replacing the old `runtimeModel` |
+| `runtimeModel` | No longer accepted; including it returns `Unrecognized key: "runtimeModel"` |
+| `thoughtLevel` | Still required at the top level (when only `options.reasoningLevel` was supplied, `settings.thoughtLevel.current` was empty in real-device testing; supplying both is safest) |
 
-GLM-5.3 系列模型 `options.reasoningLevel` 必填，不带报 `Reasoning level is required`。返回值里
-`settings.model.available` 就是 app-server 当前认的模型表——原来要另外调 `workspace/readState` 才能拿到。
-本插件的等级分配从 config.json 本地算，`doctor` 握手时只拿这张表比对个人 provider 文件里的模型有没有全被认出。
+GLM-5.3 models require `options.reasoningLevel`; omitting it returns `Reasoning level is required`. The response's
+`settings.model.available` is the model table currently recognized by app-server; previously it required a separate `workspace/readState` call.
+This plugin computes tier assignments locally from config.json; during the `doctor` handshake, this table is used only to check that all models in the personal provider file are recognized.
 
-**`workspace/generateText`**：参数 `modelRef` 改名 `selection`，形状与上面的 `model` 一样
-（`{providerId, modelId, options?:{reasoningLevel}}`），不带 `selection` 就报
-`Unrecognized key: "modelRef"`。
+**`workspace/generateText`**: `modelRef` was renamed to `selection`, with the same shape as `model` above
+(`{providerId, modelId, options?:{reasoningLevel}}`). Without `selection`, it reports
+`Unrecognized key: "modelRef"`.
 
-**新反向请求 `interaction/requestProviderRuntimeHeaders`**（zcode.cjs 3.12.2 源码里宿主模式的 headers port
-会在模型请求前向客户端要一次运行时头；**检查点 5 真机（2026-09-18）证实 api-key 型 provider 不来这个请求**，
-回合与 generateText 都直接用个人文件里的 key；账号型 provider 未验。客户端仍保留内置应答以防万一。params
-形状从源码读出，真机没抓到过实例）：
+**New reverse request `interaction/requestProviderRuntimeHeaders`**: in the zcode.cjs 3.12.2 source, the host-mode headers port
+requests runtime headers from the client before a model request. **Checkpoint 5 real-device testing (2026-09-18) confirmed that api-key providers do not send this request**:
+turns and generateText use the key in the personal file directly. Account providers were not verified. The client retains a built-in response just in case.
+The params shape below was read from source; no instance was captured on a real device:
 
 ```json
 {
@@ -77,7 +80,7 @@ GLM-5.3 系列模型 `options.reasoningLevel` 必填，不带报 `Reasoning leve
 }
 ```
 
-应答两种形状：
+Two response shapes:
 
 ```json
 { "headersApplied": true, "requestAuth": { "apiKey": "...", "headers": { "...": "..." } } }
@@ -87,11 +90,11 @@ GLM-5.3 系列模型 `options.reasoningLevel` 必填，不带报 `Reasoning leve
 { "headersApplied": false, "errorMessage": "..." }
 ```
 
-超时 180 秒未答，回合报 `-32031 Provider runtime headers were not applied before model request attempt`。
+After 180 seconds without a response, the turn reports `-32031 Provider runtime headers were not applied before model request attempt`.
 
-**不变的方法**：`session/send`、`resume`、`subscribe`、`stop`、`close`、`list`、
-`requestRuntimePreferences`、`interaction/requestPermission`、`interaction/requestUserInput`、
-`session/event` 的事件种类都没变——会话生命周期、回合结束判定、闸门那三层不用动。
+**Unchanged methods**: `session/send`, `resume`, `subscribe`, `stop`, `close`, `list`,
+`requestRuntimePreferences`, `interaction/requestPermission`, `interaction/requestUserInput`,
+and the event types of `session/event` are unchanged. The session lifecycle, end-of-turn detection, and the gate's three stages need no changes.
 
 ## Protocol Overview
 
@@ -280,13 +283,12 @@ Send a prompt.
 
 Sending another `session/send` while a turn is already running is rejected with
 JSON-RPC error code `-32010`, message `A prompt is already running for this
-session`（2026-09-21 对照 ZCode 源码核实：3.12.2 起直接拒绝，3.11 的排队插话已删除）.
+session` (checked against ZCode source on 2026-09-21: rejected directly since 3.12.2; the queued steering from 3.11 was removed).
 
 ### `session/stop`
 
 Stop the current turn. This is a **request**: it must carry an `id` —
-app-server ignores any message without an `id`（2026-09-21 对照 ZCode 源码核实：
-3.14.0 与本机 3.12.2 的 zcode.cjs）.
+app-server ignores any message without an `id` (checked on 2026-09-21 against ZCode 3.14.0 source and the local 3.12.2 zcode.cjs).
 
 **Request:**
 
@@ -300,14 +302,14 @@ app-server ignores any message without an `id`（2026-09-21 对照 ZCode 源码�
 }
 ```
 
-**Response:** `{}`（result 形状可能另有字段，忽略）。叫停生效后，回合以
-`turn.completed`（`payload.resultType: "cancelled"`，见下）结束，而不是
-`turn.failed`。
+**Response:** `{}` (result may contain additional fields; ignore them). Once stopped, the turn ends with
+`turn.completed` (`payload.resultType: "cancelled"`, see below), not
+`turn.failed`.
 
-### `v4/command`（最小用法）
+### `v4/command` (minimal usage)
 
-2026-09-21 对照 ZCode 源码（3.14.0）并在本机 App 3.12.2 零 token 探针验过。v4 与旧
-`session/*` 方法走**同一条 NDJSON 流**，方法名 `v4/command`，请求 params 就是命令信封：
+Checked against ZCode source (3.14.0) and verified with a zero-token probe on local App 3.12.2 on 2026-09-21. v4 and legacy
+`session/*` methods use **the same NDJSON stream**. The method is `v4/command`, and request params are the command envelope:
 
 ```json
 {
@@ -324,31 +326,34 @@ app-server ignores any message without an `id`（2026-09-21 对照 ZCode 源码�
 }
 ```
 
-响应 result 是 ACK：`{commandId, status, revisionAtDecision, reasonCode?, message?,
-result?}`，`status ∈ accepted | rejected | stale | duplicate | noop | failed`。
-`accepted | noop | duplicate` 视为成功，其余按失败处理。
+The preserved `commandId` placeholder means any unique string, generated by the client with `crypto.randomUUID()`.
+The example text “方向改一下，先只改 A” means “Change direction: modify only A first”.
 
-**`sendText` 的 `requestedDelivery`**：`"guide"` 表示回合忙时在下一个工具批次之后、
-下一次模型请求之前注入；没有工具边界或带附件时 CLI 自己退回排队
-（`fallbackReasonCode`），回合结束后作为下一条输入执行——两种 delivery 都算插话成功。
-被接受时 `result` 为 `{type: "inputAccepted", delivery: "startNow" | "queue", inputId}`
-（源码读出，未真机抓到实例）。**空闲会话上 `sendText` 会直接起新回合**
-（`delivery: "startNow"`），所以插话只在回合进行中发，空闲时的投递走 `session/send`。
-插话被接受后旧事件流照推 `turn.steerQueued` / `turn.steerDrained`（普通回合事件）。
+The response result is an ACK: `{commandId, status, revisionAtDecision, reasonCode?, message?,
+result?}`, with `status ∈ accepted | rejected | stale | duplicate | noop | failed`.
+`accepted | noop | duplicate` count as success; all other statuses count as failure.
 
-**`stop`**：`payload: {}`，空闲会话上也回 `{status: "accepted"}`（本机实测）。
+**`requestedDelivery` for `sendText`**: `"guide"` injects input after the next tool batch and before
+its next model request when the turn is busy. If there is no tool boundary or there are attachments, the CLI falls back to queuing
+(`fallbackReasonCode`) and executes the input after the turn ends. Both delivery modes count as successful steering.
+On acceptance, `result` is `{type: "inputAccepted", delivery: "startNow" | "queue", inputId}`
+(read from source, not captured on a real device). **`sendText` on an idle session immediately starts a new turn**
+(`delivery: "startNow"`), so use steering only during an active turn; send to an idle session via `session/send`.
+After steering is accepted, the legacy event stream continues to push `turn.steerQueued` / `turn.steerDrained` as ordinary turn events.
 
-**不需要先订阅 v4 主题、不需要握手**：v4 网关只查会话是否存在，旧 `session/create`
-建的会话同样可用（不必走 v4 `createSession`——它没有 `toolDenylist`）。
+**`stop`**: `payload: {}` returns `{status: "accepted"}` even on an idle session (verified locally).
 
-本机实测四条（App 3.12.2，2026-09-21）：
+**No v4 topic subscription or handshake is required**: the v4 gateway checks only that the session exists. Sessions created by legacy `session/create`
+also work; v4 `createSession` is unnecessary and lacks `toolDenylist`.
 
-| 命令 | ACK |
+Four local checks (App 3.12.2, 2026-09-21):
+
+| Command | ACK |
 | --- | --- |
-| `sendText` 指向不存在的 sessionId | `{status: "rejected", reasonCode: "proto.sessionNotFound"}` |
-| `sendText` 空正文 | `{status: "failed", reasonCode: "proto.invalidPayload", message: "input must not be empty"}` |
-| `type: "stop"`、`payload: {}` 指向空闲会话 | `{status: "accepted"}` |
-| 旧 `session/create` 建的会话直接 `sendText` | 可用（不订阅、不握手） |
+| `sendText` with a nonexistent sessionId | `{status: "rejected", reasonCode: "proto.sessionNotFound"}` |
+| `sendText` with empty text | `{status: "failed", reasonCode: "proto.invalidPayload", message: "input must not be empty"}` |
+| `type: "stop"`, `payload: {}` on an idle session | `{status: "accepted"}` |
+| Direct `sendText` on a session created by legacy `session/create` | Works without subscribing or a handshake |
 
 ### `session/read`
 
@@ -536,17 +541,17 @@ The turn completed.
 }
 ```
 
-`payload.resultType` can be（2026-09-21 对照 ZCode 源码核实；非 success 也走
-`turn.completed`，不走 `turn.failed`）:
+`payload.resultType` can be (checked against ZCode source on 2026-09-21: non-success outcomes also use
+`turn.completed`, not `turn.failed`):
 
-| `resultType` | 含义 |
+| `resultType` | Meaning |
 | --- | --- |
-| `success` | 正常结束 |
-| `cancelled` | 回合被叫停（`session/stop`） |
-| `error_max_turns` | 达到回合数上限 |
-| `error_max_budget` | 达到预算上限 |
-| `error_during_execution` | 回合执行中出错 |
-| `error_max_tool_calls` | 达到工具调用次数上限 |
+| `success` | Finished normally |
+| `cancelled` | Turn stopped (`session/stop`) |
+| `error_max_turns` | Turn limit reached |
+| `error_max_budget` | Budget limit reached |
+| `error_during_execution` | Error during turn execution |
+| `error_max_tool_calls` | Tool-call limit reached |
 
 ### `turn.failed`
 
@@ -595,7 +600,7 @@ Session state update (usage, etc.).
 When a user input is steered into (queued behind) a running turn, the backend
 emits a pair of lifecycle events (app-server 0.15.2+). The bridge does
 not currently translate these — they are tracked as a future enhancement (see
-[`BACKLOG.md`](./BACKLOG.md)).
+`BACKLOG.md` in the upstream zcode-acp documentation (not included in this repository)).
 
 ```json
 {
@@ -1061,7 +1066,7 @@ tool card as `failed` with `_meta.backgroundTask.cancelled = true`.
 
 The backend exposes more RPC methods than the bridge uses (sub-agent listing,
 event pull, session usage/close, automation, workspace config, MCP/plugins).
-These have no ACP-side counterpart yet. See [`BACKLOG.md`](./BACKLOG.md) for
+These have no ACP-side counterpart yet. See `BACKLOG.md` in the upstream zcode-acp documentation (not included in this repository) for
 the full list and which are candidates for future support.
 
 ## Multi-client semantics (remote access)
@@ -1080,5 +1085,4 @@ serves many clients.
 | `session/cancel`                                   | Affects the shared turn regardless of which client sent it.                                                                                                                              |
 | Process lifetime                                   | Follows the stdio client: when the editor disconnects, the bridge (and every remote attachment) exits. Remote clients never extend the lifetime.                                         |
 
-Transport details (hub discovery API, token auth, tunnel notes) live in the
-[Remote Access](../README.md#remote-access) section of the README.
+Transport details (hub discovery API, token auth, tunnel notes) live in the “Remote Access” section of the upstream zcode-acp README, which is not included in this repository.

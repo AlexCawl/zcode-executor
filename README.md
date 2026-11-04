@@ -391,6 +391,8 @@ Releases are tag-driven: `npm version patch` bumps `package.json`, syncs the ver
 
 Pure `.mjs`, zero runtime dependencies, no build step. Design documents live in `docs/`: [PRD](docs/PRD.md), [SPEC](docs/SPEC.md), [CONTEXT](docs/CONTEXT.md) (glossary), [RULES](docs/RULES.md) (coding rules), [decisions](docs/decisions.md), [verified](docs/verified.md) (facts measured against the real app-server). Agent-facing entry point: [AGENTS.md](AGENTS.md).
 
+See also the [DSH plugin](docs/dsh-plugin.md) and [protocol reference](docs/reference/zcode-app-server-protocol.md). Each document links to its English, [Chinese](docs/PRD.zh-CN.md), and [Russian](docs/PRD.ru.md) editions.
+
 ## FAQ
 
 **Does it work with agents other than ZCode?** No, by design. The executor side is ZCode only; the planning side can be Claude Code, Codex or anything that runs a shell.

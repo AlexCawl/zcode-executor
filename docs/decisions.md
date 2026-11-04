@@ -1,472 +1,477 @@
-# 决策记录
+# Decision record
 
-每条记「定了什么、为什么、什么情况下值得重开」。D1 到 D5 于 2026-09-07 定下，D6 到 D9 是同日需求对齐时补的，
-D10 是 T0.2 探针之后补的，D11 是检查点 1 撞出来的，D12 D13 是 2026-09-08 做阶段 2 时定的，
-D14 是 2026-09-18 适配 ZCode App 3.12.2 时补的，D15 是同日确定 Jev 可选快筛时补的；D16 记录本轮批准的 Jev 前筛修订，替代 D15 的路由与审计方案；
-D17、D18、D19 是 2026-09-21 对照 ZCode 开源源码（3.14.0）做线 A/B/C 时补的：D17 插话改走 v4 命令、D18 旧协议面退役风险、D19 账号型 Coding Plan 来源。
-D20 是 2026-09-27 实现闲时投递前，端到端真机跑通后补的，并修订 D19 的读取范围。D21（start plan 投递）是 2026-09-29 补的，2026-10-02 因验证码闸门整体撤除。
-D22（观察面板做成 Claude Code mod）是 2026-10-02 做 v0.4.0 时补的。
+English · [中文](decisions.zh-CN.md) · [Русский](decisions.ru.md)
 
-## D1 定位：派单与验收层，协议是别人的事
+Each entry records what was decided, why, and when it would be worth reopening. D1 through D5 were decided on 2026-09-07; D6 through D9 were added while aligning requirements the same day.
+D10 followed the T0.2 probe; D11 emerged from checkpoint 1; D12 and D13 were decided during phase 2 on 2026-09-08.
+D14 was added on 2026-09-18 when adapting to ZCode App 3.12.2; D15 was added the same day when optional Jev fast screening was agreed; D16 records the Jev pre-screen revision approved in this round, replacing D15's routing and audit design.
+D17, D18, and D19 were added on 2026-09-21 during tracks A/B/C against ZCode's open-source code (3.14.0): D17 moves steering to v4 commands, D18 records the risk of retiring the old protocol surface, and D19 covers the source for account-based Coding Plans.
+D20 was added on 2026-09-27 after a successful end-to-end live run, before implementing off-peak sends, and revises D19's read scope. D21 (start-plan sends) was added on 2026-09-29 and removed in full on 2026-10-02 because of the CAPTCHA gate.
+D22 (implementing the watch pane as a Claude Code mod) was added on 2026-10-02 while building v0.4.0.
 
-三个第三方项目（zcode-open-bridge、zcode-acp、coder-mcp-bridge）已经把 zcode 的
-app-server 协议摸了三遍，没有一个碰"Claude 怎么写任务单、派到哪个 worktree、
-怎么排队、怎么验收、怎么记账"。本项目只做后者。
+## D1 Positioning: dispatch and acceptance; the protocol is somebody else's job
 
-**明确不做**：协议翻译产品、TUI、远程访问、审查工具、通用资源调度。
+Three third-party projects (zcode-open-bridge, zcode-acp, coder-mcp-bridge) have already explored ZCode's
+app-server protocol three times. None addresses how Claude writes a task file, chooses a worktree,
+queues work, accepts results, or keeps records. This project does only that latter part.
 
-重开条件：zcode 官方出了派单/验收能力。
+**Explicitly out of scope**: a protocol-translation product, TUI, remote access, review tool, or general resource scheduling.
 
-## D2 直连 app-server，中间没有 ACP
+Reopen when: ZCode officially provides dispatch/acceptance capabilities.
 
-原方案是走 ACP 传输层，经 zcode-acp-server 翻译。
-ACP 只在同时接多个执行端时才是公共语言；项目只接 zcode，它就是一层多余翻译。
+## D2 Connect directly to app-server, with no ACP in between
 
-直连之后原来的四个问题三个消失：`session/create` 立刻返回真 `sess_` id
-（懒会话和 list 命名空间是 zcode-acp 为编辑器造的）；`session/close` 本来就有；
-`mode` 和 `toolDenylist` 可以在 create 时直接传；`interaction/requestPermission`
-直接落到我们手上。剩下的 provider 表同步只是几行过滤。
+The original plan used the ACP transport layer, translated by zcode-acp-server.
+ACP is a common language only when connecting multiple executors; this project connects only ZCode, making it an unnecessary translation layer.
 
-代价：自己维护一个约 800 到 1200 行的 app-server 客户端，从 zcode-acp 搬核心
-（Apache-2.0，保留声明）。zcode-acp 两天发十个 minor 版本、方向往 TUI 和远程走，
-把它当运行时依赖的风险比自己维护一份小客户端高。
+Going direct removes three of the original four problems: `session/create` immediately returns a real `sess_` id
+(lazy sessions and the list namespace were inventions of zcode-acp for editors); `session/close` already exists;
+`mode` and `toolDenylist` can be passed directly at create time; `interaction/requestPermission`
+comes straight to us. The remaining provider-registry synchronization is only a few lines of filtering.
 
-重开条件：zcode 改 app-server 协议的频率高到我们跟不上。
+Cost: maintaining our own app-server client of roughly 800 to 1200 lines, with its core taken from zcode-acp
+(Apache-2.0, preserving its notices). zcode-acp released ten minor versions in two days and is moving toward TUI and remote access;
+using it as a runtime dependency is riskier than maintaining a small client ourselves.
 
-## D3 审批：红线 → 模型审批 → 挂起等人
+Reopen when: ZCode changes the app-server protocol faster than we can keep up.
 
-会话用 `build` 档（会发审批请求），可选 `toolDenylist` 物理拿掉工具。
-审批请求进闸门：
+## D3 Approvals: hard rules → model review → pending for a human
 
-1. 红线规则先判（不可清除的那几条）。
-2. 模型审批经 `workspace/generateText` 判，额度走 zcode 的 coding plan，
-   不建会话、不污染 App 列表。逻辑参考 Claude Code auto 模式的快慢两段审批。
-3. 判不下来就挂起：请求写进 `runs/<id>/pending.json`，连接保持不答
-   （app-server 侧无超时），`send --wait` 以 `blocked` 返回。Claude 用
-   AskUserQuestion 问人，再跑 `zcode-executor approve|deny <id>`。
+Sessions use `build` mode (which sends permission requests); optional `toolDenylist` physically removes tools.
+Permission requests enter the gate:
 
-**模型审批只产出放行或转人工。** 拒绝也走人工。这条是"自己审自己"能被接受的前提。
+1. Evaluate the hard rules first (the rules that cannot be cleared).
+2. Run model review through `workspace/generateText`, using ZCode's Coding Plan quota,
+   without creating a session or cluttering the App's list. The logic follows Claude Code auto mode's fast/slow two-stage review.
+3. If no decision can be reached, leave it pending: write the request to `runs/<id>/pending.json` and keep the connection open without replying
+   (app-server has no timeout); `send --wait` returns `blocked`. Claude asks the human through
+   AskUserQuestion, then runs `zcode-executor approve|deny <id>`.
 
-Claude Code 原生通道为何没选：MCP elicitation 是唯一能把外部请求弹到 Claude
-Code 对话框里的路，但要求桥以 MCP 服务形态常驻、弹框发生在某个工具调用进行中，
-且非交互模式直接失败；钩子和 `--permission-prompt-tool` 方向相反，只管 Claude
-自己的工具调用。留作 MCP 外壳阶段的升级项。
+**Model review produces only allow or ask a human.** Denials also go through a human. This is the prerequisite for accepting "reviewing oneself."
 
-重开条件：Claude Code 给外部进程开了审批入口。
+Why not Claude Code's native channel: MCP elicitation is the only route for showing an external request in a Claude
+Code dialog, but it requires the bridge to remain running as an MCP service, the dialog must appear during an active tool call,
+and non-interactive mode fails outright. Hooks and `--permission-prompt-tool` work in the opposite direction: they handle only Claude's
+own tool calls. Leave this as an upgrade for the MCP-shell phase.
 
-## D4 单执行端，独立项目
+Reopen when: Claude Code exposes an approval entry point to external processes.
 
-不做"一个桥接多个后端"的通用桥。本项目只接 ZCode，借鉴的是作者先前派单工具里
-验证过的模式（runner 一生、队列与锁、runs 落盘、验收），代码不引用。
+## D4 A single executor, an independent project
 
-## D5 名字：zcode-executor
+Do not build a generic bridge connecting multiple backends. This project connects only ZCode. It borrows patterns
+validated in the author's earlier dispatch tools (runner lifecycle, queue and locks, runs persistence, acceptance), without referencing their code.
 
-仓库、插件、CLI、skill 同名，和作者其它派单 skill 的命名对称，用户说
-"让 zcode 去做"就触发。名字里没有 bridge（三个第三方项目都叫 bridge），
-也没有协议名（协议是实现细节）。
+## D5 Name: zcode-executor
 
-## D6 模型按等级选，不按名字
+The repository, plugin, CLI, and skill share one name, matching the author's other dispatch skills. Saying
+"让 zcode 去做" ("let zcode do it") triggers it. The name contains neither bridge (all three third-party projects use bridge)
+nor a protocol name (the protocol is an implementation detail).
 
-派活和模型审批都用 `fast` / `strong` 两个等级，从 `workspace/readState` 拿列表按名字关键词自动分，
-`config.json` 可覆盖。派活的思考等级默认 `high`，`--thought` 可覆盖；模型审批默认 `low`（2026-09-08 改：审批只判是不是日常工作，high 白花时间和 token，且慢判在 high 下曾把预算耗在推理上被截断）。
+## D6 Select models by tier, not by name
 
-不写死模型名是因为模型会换代，写死了每次换代都要改代码和 skill。Flash 类模型思考等级不往低调，
-用户实测低了效果差。
+Dispatch and model review both use two tiers, `fast` / `strong`. Get the list from `workspace/readState` and classify it automatically by name keywords;
+`config.json` can override this. Dispatch defaults to thought level `high`, overridable with `--thought`; model review defaults to `low` (changed on 2026-09-08: review only determines whether this is routine work; high wastes time and tokens, and slow review at high once spent its budget on reasoning and was truncated).
 
-**provider 优先级（T0.2b 后补）**：同名模型在多个 provider 下并存，zcode 默认落到 API Key 按量计费的 `builtin:bigmodel`。
-我们优先 coding plan：配置 `preferredProvider` > id 以 `-coding-plan` 结尾 > `-start-plan` > 其它，只在启用的里面选。
-国内站点 `builtin:bigmodel-*` 和国际站点 `builtin:zai-*` 一视同仁，哪个启用用哪个。
+Model names are not hardcoded because models change generations; hardcoding would require changing code and the skill every time. Do not reduce the thought level of Flash-class models:
+users observed worse results at lower levels.
 
-重开条件：出现第三种明显不同档次的模型，两档装不下。
+**Provider priority (added after T0.2b)**: models with the same name coexist under several providers; ZCode defaults to the API-key, usage-billed `builtin:bigmodel`.
+We prefer Coding Plans: configured `preferredProvider` > ids ending in `-coding-plan` > `-start-plan` > others, selecting only enabled providers.
+Treat domestic `builtin:bigmodel-*` and international `builtin:zai-*` equally; use whichever is enabled.
 
-## D7 执行端的提问也挂起，由 Claude 先答
+Reopen when: a clearly different third model class appears that does not fit into two tiers.
 
-zcode 的 AskUserQuestion 不进红线和模型审批，直接挂起，`send --wait` 以 5 返回，
-Claude 看问题决定自己 `answer` 还是转给人。
+## D7 Executor questions also become pending; Claude answers first
 
-不自动回「按任务单自决」：那等于把执行端最需要人的时刻糊弄过去。不直接拒绝：Claude 是工头，
-大部分问题任务单里写过，它自己能答，不必每次惊动人。
+ZCode's AskUserQuestion bypasses hard rules and model review and becomes pending directly. `send --wait` returns 5;
+Claude reads the question and decides whether to `answer` itself or relay it to a human.
 
-重开条件：实际用下来 Claude 答错的比例高到不如全部转人。
+Do not automatically reply "decide from the task file": that would brush aside the moment when the executor most needs help. Do not deny directly either: Claude is the foreman,
+and most questions are already covered in the task file, so it can answer without disturbing the human every time.
 
-## D8 cwd 白名单，默认只允许 `~/.zcode-executor/worktrees/`
+Reopen when: in practice, Claude answers incorrectly often enough that forwarding everything to a human would be better.
 
-白名单挡的是 Claude 手滑把主检出当 cwd，红线挡的是执行端越界，两者不重叠。
-cwd 不是 worktree 只警告不拒：白名单里放一个普通仓库是用户有意为之。
+## D8 A cwd allowlist, defaulting to `~/.zcode-executor/worktrees/` only
 
-## D9 纯 `.mjs`，零依赖，无构建
+The allowlist prevents Claude from accidentally using the main checkout as cwd; hard rules prevent the executor from crossing boundaries. They do not overlap.
+If cwd is not a worktree, warn rather than reject: placing an ordinary repository in the allowlist is a deliberate user choice.
 
-审批层的 TypeScript 原型手工去类型。几百行代码不值得引入构建；
-Node 22.18 的运行时剥类型会把 Node 门槛抬高并多一种文件形态。
+## D9 Plain `.mjs`, zero dependencies, no build
 
-重开条件：搬来的代码超过两三千行，手工维护两份开始出错。
+Manually strip the types from the approval layer's TypeScript prototype. A few hundred lines of code do not justify a build;
+Node 22.18's runtime type stripping would raise the minimum Node version and introduce another file form.
 
-## D10 建会话前必须推 provider 表，所以要读 `~/.zcode/v2/config.json`（3.12 起失效，见 D14）
+Reopen when: imported code exceeds two or three thousand lines and manually maintaining two copies starts causing errors.
 
-T0.2 探针证实：直连 app-server 时不推 `workspace/updateProviderRegistry`，`session/create` 直接被拒
-（Model config is missing），readState 也拿不到模型列表。app-server 不自己读 v2 config，
-只有 App 和 zcode-acp 会替它推。所以我们必须读 `~/.zcode/v2/config.json` 构造 registry，
-含 apiKey 内联传给子进程。
+## D10 Push the provider registry before creating a session, requiring `~/.zcode/v2/config.json` (obsolete from 3.12; see D14)
 
-约束不变的部分：这个文件**只读不写**；apiKey 只出现在发给子进程的 stdin 里，永不落盘、永不打印；
-models 为空或 `enabled:false` 的 provider 过滤掉。之前 RULES 里「只判断存在不读内容」这条改成
-「只读，且内容不出协议层」。
+The T0.2 probe confirmed that a direct app-server connection without `workspace/updateProviderRegistry` immediately rejects `session/create`
+(Model config is missing), and readState cannot get the model list either. app-server does not read v2 config itself;
+only the App and zcode-acp push it on its behalf. We must therefore read `~/.zcode/v2/config.json` to construct the registry,
+including apiKey inline when passing it to the child process.
 
-重开条件：zcode 让 app-server 自己读配置。
+Unchanged constraints: this file is **read-only**; apiKey appears only in stdin sent to the child process, never persisted or printed;
+filter out providers with empty models or `enabled:false`. Replace RULES' earlier "check only existence, do not read contents" with
+"read-only, and contents do not leave the protocol layer."
 
-2026-09-18 起 ZCode 3.12.2 删掉了 `workspace/updateProviderRegistry` / `runtimeModel`，见 D14。
+Reopen when: ZCode makes app-server read its own configuration.
 
-## D11 建会话带 `runtimeModel`，模型与 provider 由我们指定（3.12 起失效，见 D14）
+As of 2026-09-18, ZCode 3.12.2 removed `workspace/updateProviderRegistry` / `runtimeModel`; see D14.
 
-检查点 1 证实：推 provider 表之后 create 若不带 `runtimeModel`，回合仍因 provider 无 key 失败，而且默认模型落在
-API Key 计费的 provider。带上 `runtimeModel`（model ref + provider 定义含内联 apiKey）两个问题一起消失。
-所以 `new` 一律按等级和 provider 优先级算出 model ref，构造 runtimeModel 传给 create；resume 不带。
+## D11 Create sessions with `runtimeModel`; we specify the model and provider (obsolete from 3.12; see D14)
 
-重开条件：zcode 让 app-server 自己解析 provider 鉴权。
+Checkpoint 1 confirmed that, after pushing the provider registry, create without `runtimeModel` still leads to a failed turn because the provider lacks a key, and the default model belongs to
+a provider billed by API key. Passing `runtimeModel` (model ref + provider definition with inline apiKey) resolves both problems.
+Thus `new` always calculates the model ref from the tier and provider priority, constructs runtimeModel, and passes it to create; resume does not include it.
 
-2026-09-18 起 ZCode 3.12.2 删掉了 `workspace/updateProviderRegistry` / `runtimeModel`，见 D14。
+Reopen when: ZCode makes app-server resolve provider authentication itself.
 
-## D12 runner 一律后台，前台命令只读文件
+As of 2026-09-18, ZCode 3.12.2 removed `workspace/updateProviderRegistry` / `runtimeModel`; see D14.
 
-原设计是 `send --wait` 前台自己当 runner。但本项目挂起时要**保持连接不答**，前台以退出码 5 返回后连接不能断，
-所以 runner 必须是独立后台进程，前台 `send --wait`、`follow`、`status` 都只读 `runs/<id>/` 的文件，
-`approve / deny / answer` 通过 `answer.json` 把应答交给 runner。代价是多一个 detached 进程和一层文件轮询。
+## D12 The runner always runs in the background; foreground commands only read files
 
-重开条件：无。
+The original design made foreground `send --wait` the runner itself. But pending in this project requires **keeping the connection open without replying**, so the connection cannot close
+when the foreground command returns exit code 5. The runner must therefore be an independent background process; foreground `send --wait`, `follow`, and `status` only read files in `runs/<id>/`,
+and `approve / deny / answer` deliver replies to the runner through `answer.json`. The cost is another detached process and a layer of file polling.
 
-## D13 `new` 不建 zcode 会话，登记簿用本地派单 id
+Reopen conditions: none.
 
-真机证实：没跑过回合的会话进程一关就 resume 不了，create 又不接受自定义 sessionId。所以 `new` 只做零 token 的模型校验和登记，
-登记簿的键是本地 id（`x_` 加 8 位十六进制），`sessionId` 字段先空着；runner 第一次投递时 `session/create`（带 runtimeModel、thoughtLevel、
-toolDenylist）并把 `sess_` 写回登记簿，之后都 `session/resume`。所有命令的 `<id>` 参数都是本地 id。
-runner 若 resume 报 Session not found（会话在 zcode 侧丢了）→ 记事件 `executor.recreated` 后重新 create，不静默失败。
+## D13 `new` does not create a ZCode session; the registry uses a local dispatch id
 
-代价：本地 id 和 zcode id 两套，`list` 两列都显示。CONTEXT.md「会话」条目相应改写。
+Live verification confirmed that sessions which have never run a turn cannot be resumed after their process closes, and create does not accept a custom sessionId. So `new` only performs zero-token model validation and registration;
+the registry key is a local id (`x_` followed by 8 hexadecimal digits), with `sessionId` initially empty. On the first send, the runner calls `session/create` (with runtimeModel, thoughtLevel,
+and toolDenylist), writes `sess_` back to the registry, and uses `session/resume` thereafter. Every command's `<id>` argument is the local id.
+If runner resume reports Session not found (the session was lost on ZCode's side), record `executor.recreated` and create again rather than failing silently.
 
-重开条件：zcode 允许自定义 sessionId 或空会话可持久化。
+Cost: two ids, local and ZCode; `list` displays both columns. The "Session" entry in [CONTEXT.md](CONTEXT.md) was rewritten accordingly.
 
-## D14 3.12 起自带个人 provider 文件，密钥落临时文件
+Reopen when: ZCode allows custom sessionId or persistent empty sessions.
 
-定了什么：ZCode App 3.12.2 把 provider 表从「宿主推给 app-server」改成「app-server 自己从两个文件读」，
-`workspace/updateProviderRegistry` 和 `runtimeModel` 一并消失（见 D10、D11）。我们改成 spawn 子进程时带两个
-环境变量：`ZCODE_BUILTIN_PROVIDER_CONFIG_FILE` 指向 ZCode App 自带的内置 provider 文件（`zcode-builtin.json`，
-CONTEXT.md 有词条），`ZCODE_PERSONAL_PROVIDER_CONFIG_FILE` 指向我们自己写的一份个人 provider 文件——里面只有
-一个 provider，providerId 固定写死 `zcode-executor`（不沿用 config.json 里的 `builtin:bigmodel-coding-plan`，
-理由同 D11：新版 `builtin:` / `account:` 前缀有保留含义）。`session/create` 的模型参数从 `runtimeModel` 改成
-`model:{providerId:'zcode-executor', modelId, options:{reasoningLevel}}`，`workspace/generateText` 的
-`modelRef` 改成同形状的 `selection`。zcode.cjs 里还有一条新的反向请求
-`interaction/requestProviderRuntimeHeaders`（模型请求前向宿主要运行时头），检查点 5 真机证实 api-key 型
-provider 不会发它（verified.md 2026-09-18 表第 5 行）；客户端仍保留内置应答以防账号型 provider 用到：有 key 答
-`{headersApplied:true, requestAuth:{apiKey}}`，没有答 `{headersApplied:false, errorMessage}`。
+## D14 From 3.12, supply a personal provider file; keys go in a temporary file
 
-为什么：app-server 改成自己读文件，不再接受宿主推表，`workspace/updateProviderRegistry`（D10）和
-`runtimeModel`（D11）都被删了，我们必须换一套办法把密钥和模型表交给它。试过的不落盘路径都走不通：
-`provider/updateAccountConfig` 只收 `access.type:"zhipu-account"` 那一种账号型 provider，塞 `apiKey` 直接
-被拒；反向请求 `requestProviderRuntimeHeaders` 又是模型请求时才会来，建会话那一步 registry 里还是要先有这个
-provider，不能靠它临时插入。写用户自己的 `~/.zcode/v2/provider_config.json` 也不行：App 会重写这个文件、
-会和用户自己的配置打架，还违反「`~/.zcode` 只读」的约束（RULES §6）。所以只能自己写一份个人 provider 文件
-让 app-server 读。
+Decision: ZCode App 3.12.2 changed provider-registry handling from "the host pushes it to app-server" to "app-server reads it from two files."
+`workspace/updateProviderRegistry` and `runtimeModel` disappeared together (see D10, D11). We now spawn the child process with two
+environment variables: `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE` points to the builtin provider file shipped with ZCode App (`zcode-builtin.json`,
+defined in [CONTEXT.md](CONTEXT.md)); `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE` points to a personal provider file we write ourselves. It contains only
+one provider, with providerId hardcoded to `zcode-executor` (not reusing config.json's `builtin:bigmodel-coding-plan`,
+for the same reason as D11: the new `builtin:` / `account:` prefixes have reserved meanings). The model parameter for `session/create` changes from `runtimeModel` to
+`model:{providerId:'zcode-executor', modelId, options:{reasoningLevel}}`; `workspace/generateText` changes from
+`modelRef` to `selection` with the same shape. zcode.cjs also adds a new reverse request,
+`interaction/requestProviderRuntimeHeaders` (asking the host for runtime headers before a model request). Live checkpoint 5 confirmed that api-key
+providers do not send it ([verified.md](verified.md), 2026-09-18, table row 5). The client still keeps a builtin reply in case account providers use it: with a key, reply
+`{headersApplied:true, requestAuth:{apiKey}}`; without one, reply `{headersApplied:false, errorMessage}`.
 
-密钥放哪：个人 provider 文件放在 `os.tmpdir()` 下用 `mkdtemp` 建的临时目录里，权限 0600，子进程收场的
-`finally` 里删掉；不进 `runs/<id>/`（那个目录是留着事后查看的，不该有密钥）。
+Why: app-server now reads files itself and no longer accepts a registry pushed by the host. Both `workspace/updateProviderRegistry` (D10) and
+`runtimeModel` (D11) were deleted; we need another way to give it keys and model lists. None of the non-persistent approaches tried worked:
+`provider/updateAccountConfig` accepts only account providers with `access.type:"zhipu-account"`; supplying `apiKey` is immediately
+rejected. The `requestProviderRuntimeHeaders` reverse request comes only when a model request happens, while the provider must already exist in the
+registry at session creation; it cannot insert one on demand. Writing the user's own `~/.zcode/v2/provider_config.json` is also ruled out: the App rewrites that file,
+it would conflict with the user's configuration, and it violates the "`~/.zcode` is read-only" constraint (RULES §6). The only option is to write our own personal provider file
+for app-server to read.
 
-残留边界：只有 runner 被 SIGKILL 或机器崩溃时，这个临时文件才会留在 `os.tmpdir()` 里没删掉——生产路径没有
-对 runner 发 SIGKILL 的代码，`cancel` 走的是文件信号（`answer.json` / `stop.json`），不是杀进程；macOS 的
-`$TMPDIR` 本身权限 0700（只有当前用户能进）且系统会定期清理，双重兜底。
+Key location: place the personal provider file in a temporary directory created with `mkdtemp` under `os.tmpdir()`, with mode 0600; delete it in the
+`finally` when the child process finishes. Do not put it in `runs/<id>/` (that directory is retained for later inspection and should not contain keys).
 
-重开条件：zcode 提供一种不落盘就能推 api-key 型 provider 的方法；或者 legacy 的 `~/.zcode/v2/config.json`
-不再存明文 apiKey（那样密钥的落盘问题从根上消失）。
+Remaining boundary: this temporary file remains undeleted in `os.tmpdir()` only if the runner receives SIGKILL or the machine crashes. Production paths contain
+no code sending SIGKILL to the runner; `cancel` uses file signals (`answer.json` / `stop.json`), not process killing. macOS's
+`$TMPDIR` itself is mode 0700 (accessible only by the current user), and the system periodically cleans it, providing two fallback protections.
 
-## D15 Jev 以插件配置里的 key 选择快筛，不设 shadow 阶段（历史决定，路由已由 D16 修订）
+Reopen when: ZCode provides a way to push api-key providers without writing to disk; or legacy `~/.zcode/v2/config.json`
+no longer stores apiKey in plaintext (which would eliminate the underlying key-persistence problem).
 
-> 以下保留当时的决定与理由，不是现行路由。原替代快筛、失败直接慢判及 `fastReview` 写入方案由 D16 修订；key 来源、文件保护、无 shadow 等约束继续保留。历史校准不构成新路线的安全或性能证明。
+## D15 Jev selects fast screening through a key in plugin config, with no shadow phase (historical decision; D16 revised the routing)
 
-定了什么：`~/.zcode-executor/config.json` 的 `review.jev.apiKey` 为非空时，闸门第一段直接使用固定版本 Jev；没有 key 时回退到已有 ZCode fast 档 + `low` 思考等级快筛。Jev 只替代快筛，flag 与任何调用/校验失败都进入同一份 ZCode 慢判。红线、`allow_once`、慢判与挂起不变。首版不提供 shadow/off/screen、provider 枚举或环境变量 key 来源。
+> The decision and reasons below are preserved as history, not current routing. D16 revises the original replacement fast screen, direct fallback to slow review on failure, and `fastReview` recording design; constraints on key source, file protection, and no shadow remain. Historical calibration does not prove the safety or performance of the new route.
 
-为什么：本机历史回放已经完成校准，用户选择跳过 shadow。配置文件比 detached runner 继承环境变量稳定，也能被 `doctor` 确定性检查；只有一份 key 来源则没有优先级歧义。让 Jev 失败回落慢判，而不是直接挂起，可以保持两段模型审批的可用性；让慢判仍走 ZCode，避免把外部服务故障扩大成人工审批风暴。
+Decision: when `review.jev.apiKey` in `~/.zcode-executor/config.json` is nonempty, the gate's first stage directly uses a fixed Jev version; without a key, it falls back to the existing ZCode fast-tier + `low` thought-level fast screen. Jev replaces only fast screening; flags and all call/validation failures enter the same ZCode slow review. Hard rules, `allow_once`, slow review, and pending remain unchanged. The first version offers no shadow/off/screen, provider enumeration, or environment-variable key source.
 
-安全与数据边界：含 Jev key 的 config 必须是当前 uid 拥有的普通非符号链接文件，权限不宽于 `0600`；否则拒绝读取。只发送字段 allowlist 下的最小 state，Write/Edit 正文不出机，路径与凭据脱敏；key、Authorization、完整 state 和原始响应 body不进事件、pending、runner.log 或 app-server 子进程。Jev questions 全是独立负向风险，不使用“日常操作”或综合 confidence。事件保留现有 stage/decision，只附加 reviewer 与筛选后的 typed metadata；慢判事件通过嵌套 `fastReview` 说明 Jev flag/失败原因。
+Why: local historical replay had completed calibration, and the user chose to skip shadow. A config file is more reliable than environment inheritance by a detached runner and lets `doctor` check deterministically; a single key source removes priority ambiguity. Letting Jev failures fall back to slow review rather than directly becoming pending maintains two-stage model-review availability; keeping slow review on ZCode prevents an external-service failure from becoming a storm of human approvals.
 
-代价：key 以明文保存在用户目录的配置文件中，因此必须强制文件 owner/mode，不再满足旧 RULES “除临时 provider 文件外不落 key”的限制；这是用户为稳定读取明确选择的权衡。配置改动只影响之后由命令启动/重启且重新读取配置的 runner，已经在跑的连接不热更新。
+Security and data boundary: config containing a Jev key must be a regular, non-symlink file owned by the current uid with permissions no broader than `0600`; otherwise refuse to read it. Send only the minimal state under a field allowlist; Write/Edit bodies stay on the machine, and paths and credentials are redacted. Keys, Authorization, full state, and raw response bodies never enter events, pending, runner.log, or the app-server child process. Jev questions are all independent negative risks; do not use "routine operation" or an aggregate confidence. Events retain existing stage/decision, adding only reviewer and filtered typed metadata; slow-review events explain Jev flags/failures through nested `fastReview`.
 
-重开条件：需要系统 keychain、企业 secret store、自定义 TypeSafe endpoint/模型、多个 key 来源；Jev 不稳定到“失败回落慢判”仍不可接受；或用户明确需要按会话/项目开关。
+Cost: the key is stored as plaintext in a config file under the user's directory, so owner/mode must be enforced. This no longer satisfies the old RULES restriction of "no key persistence except the temporary provider file"; the user explicitly chose this tradeoff for stable reads. Config changes affect only runners started/restarted by a later command that rereads config; existing connections do not hot-reload.
 
-## D16 Jev 改为可选前筛，原 ZCode 快筛完整保留
+Reopen when: a system keychain, enterprise secret store, custom TypeSafe endpoint/model, or multiple key sources are needed; Jev becomes so unreliable that "failure falls back to slow review" remains unacceptable; or the user explicitly needs per-session/project switches.
 
-定了什么：按已批准的 修复与优化方案（`docs/jev-hardening-plan.md`，本地记录，不进仓库），Jev 是提前通过层，不再替代 ZCode 快筛。红线和 `allow_once` 在前；非空白 `review.jev.apiKey` 启用 Jev。证据充分且五项概率均达标的 pass 提前 allow；flag/error/skip、超时、非法响应和 adapter 异常都进入原 ZCode fast + low 快筛，结果未通过或无法解析才慢判。原快筛调用失败仍 `review-failed` / ask，慢判失败仍 ask。无 key 保留原链路，关闭 review 的原挂起合同不变。
+## D16 Jev becomes an optional pre-screen; the original ZCode fast screen remains intact
 
-为什么：保留原快筛的判断机会，让 Jev 不能提前通过时回到既有审批链，而不是强制慢判。前筛仍有提前放行权，增加一层本身不是安全证明；必要证据门槛、输入脱敏、响应校验和严格 deadline 必须同时成立。
+Decision: under the approved repair and optimization plan (`docs/jev-hardening-plan.md`, local record, not committed), Jev is an early-pass layer and no longer replaces ZCode fast screening. Hard rules and `allow_once` come first; a non-whitespace `review.jev.apiKey` enables Jev. With sufficient evidence and all five probabilities meeting their thresholds, a pass allows early; flag/error/skip, timeout, invalid responses, and adapter exceptions all enter the original ZCode fast + low fast screen. Only a non-passing or unparseable result goes to slow review. Original fast-screen call failures still produce `review-failed` / ask; slow-review failures still ask. Without a key, preserve the original chain; disabling review retains the original pending contract.
 
-证据边界：Write/Edit/MultiEdit 正文省略、缺有效意图、命令或授权信息截断、无法可靠脱敏时，本地 skip，零 Jev HTTP 请求。复杂性不是风险：完整且任务相关的管道、子 shell、批处理、项目脚本仍可前筛；确实缺少必要事实才回落。原快筛收到原 action/context，不接 Jev 概率指令；不上传正文来换取直通率，不扩大原隐私权限。
+Why: preserve the original fast screen's opportunity to decide. When Jev cannot pass early, return to the existing review chain rather than forcing slow review. The pre-screen can still allow early; adding a layer is not itself a safety proof. Required-evidence thresholds, input redaction, response validation, and a strict deadline must all hold together.
 
-审计与诊断：每次请求仍只有一个最终 `executor.gate`；`preScreen` 独立记录 Jev pass/flag/error/skip，最终 stage/reviewer 区分 Jev 提前通过、ZCode 快筛通过与慢判。历史 `fastReview` 保持旧 Jev 回落含义，不静默改义。`doctor` 新增 `review.pipeline`，有 key 为 `['jev','zcode-fast','zcode-slow']`，无 key 为后两项，禁用为 `[]`，配置失败为 `null`（不可确定）；兼容 `fastScreen` 不表示替代原快筛。
+Evidence boundary: if Write/Edit/MultiEdit bodies are omitted, valid intent is missing, command or authorization information is truncated, or reliable redaction is impossible, skip locally with zero Jev HTTP requests. Complexity is not risk: complete, task-relevant pipelines, subshells, batch operations, and project scripts can still be pre-screened; fall back only when necessary facts are actually missing. The original fast screen gets the original action/context, without instructions from Jev probabilities. Do not upload bodies to improve the early-pass rate or expand the existing privacy permissions.
 
-保留：配置文件唯一 key 来源、属主与权限检查、无环境变量后门、无 shadow/mode、固定模型、零运行时依赖；不并发竞速。本轮题目去重与边界修订升级为 `approval-v2`（模型仍为 `jev-1.13.0`），尚未重新真实校准；阈值维持 0.20，不放宽。
+Audit and diagnostics: each request still has only one final `executor.gate`; `preScreen` independently records Jev pass/flag/error/skip, and final stage/reviewer distinguish early Jev passes, ZCode fast-screen passes, and slow review. Historical `fastReview` retains its old meaning of Jev fallback rather than silently changing meaning. `doctor` adds `review.pipeline`: `['jev','zcode-fast','zcode-slow']` with a key, the latter two without a key, `[]` when disabled, and `null` on configuration failure (indeterminate); compatibility `fastScreen` does not mean replacement of the original fast screen.
 
-代价：Jev 未提前通过会增加串行等待；本地 skip 无这笔 HTTP 开销。省略正文的写操作不再享有 Jev 直通。必须用同批样本比较端到端耗时、提前通过率、回落与费用；旧真实 Write pass 和旧校准仅是历史证据，不改写成新路线已验。
+Retained: config as the only key source, owner/permission checks, no environment-variable backdoor, no shadow/mode, fixed model, and zero runtime dependencies; no concurrent racing. This round's question deduplication and boundary revisions upgrade the schema to `approval-v2` (model still `jev-1.13.0`), without new live recalibration; keep the threshold at 0.20, without relaxing it.
 
-重开条件：配对测量无净收益，需缩小适用范围或调整预算；若要恢复正文省略动作的直通、让原快筛调用异常也进入慢判，须另行决策并验收，不能借本轮暗改。
+Cost: Jev adds serial waiting when it does not pass early; local skip avoids this HTTP cost. Writes whose bodies are omitted no longer get early passage through Jev. Compare end-to-end duration, early-pass rate, fallback, and cost on the same sample batch; old live Write passes and old calibration are historical evidence only, not verification of the new route.
 
-## D17 插话改走 v4/command 的 sendText，会话与事件流仍走旧 session/* 方法
+Reopen when: paired measurements show no net benefit, requiring a narrower scope or adjusted budget. Restoring early passage for actions with omitted bodies, or sending original fast-screen call exceptions to slow review, requires a separate decision and acceptance; do not slip either change into this round.
 
-定了什么（2026-09-21，T6-B）：回合进行中的插话不再发第二条 `session/send`（App 3.12.2 起被拒 -32010
-「A prompt is already running」），改发 `v4/command` 的 `sendText` 命令，`requestedDelivery:"guide"`：
-回合忙时在下一个工具批次之后、下一次模型请求之前注入；没有工具边界或带附件时 zcode 自己退回排队，
-回合结束后作为下一条输入执行——两种都算插话成功（真机检查点 6b：guide 在 b.txt 与 c.txt 之间注入生效）。
-ACK 回 `startNow` 说明插话到达时回合已结束、起了计划外的回合，立刻发 v4 `stop` 并按失败记录。
-会话仍用旧 `session/create` 建（要 `toolDenylist`，模型列表也只有它给），仍订旧 `session/subscribe`，
-审批与提问仍答旧反向请求。协议层只多一个 `AppServerClient.command()` 薄封装。
+## D17 Steering uses sendText through v4/command; sessions and the event stream still use old session/* methods
 
-为什么：源码里 `v4/command` 只查会话是否存在，不要求先订阅 v4 主题、不要求握手，旧 create 建的会话同样
-在表里（本机零 token 探针证实）；桌面 App 自己也是旧 create + v4 命令并用。v4 `createSession` 没有
-`toolDenylist`，模型目录只在旧 `session/create` 的结果里，所以不把 v4 当主路径。
+Decision (2026-09-21, T6-B): steering during an active turn no longer sends a second `session/send` (rejected from App 3.12.2 with -32010,
+"A prompt is already running"). Instead, send the `sendText` command through `v4/command`, with `requestedDelivery:"guide"`:
+while the turn is busy, inject after the next tool batch and before the next model request; if there is no tool boundary, or attachments are present, ZCode falls back to queuing,
+executing it as the next input after the turn finishes. Both count as successful steering (live checkpoint 6b: guide was injected and took effect between b.txt and c.txt).
+An ACK of `startNow` means the turn had already ended when the steering arrived and an unplanned turn started; immediately send v4 `stop` and record failure.
+Sessions are still created with old `session/create` (needed for `toolDenylist`, and only it provides the model list), still subscribe through old `session/subscribe`,
+and still answer old reverse requests for approvals and questions. The protocol layer adds only a thin `AppServerClient.command()` wrapper.
 
-重开条件：旧 `session/create` / `session/subscribe` / `session/event` 任一返回 -32601（见 D18）。
+Why: source code shows `v4/command` only checks that the session exists. It requires neither prior subscription to a v4 topic nor a handshake; sessions created by old create
+are in the same table (confirmed by a local zero-token probe). The desktop App itself also mixes old create and v4 commands. v4 `createSession` has no
+`toolDenylist`, and the model catalog appears only in old `session/create` results, so v4 is not the main path.
 
-## D18 旧协议面在退役轨道上，v4 订阅与投影暂缓
+Reopen when: any of old `session/create` / `session/subscribe` / `session/event` returns -32601 (see D18).
 
-定了什么（2026-09-21）：ZCode 3.14 源码把 `session/send`（部分）、`session/stop`、`session/fork` 标了
-@deprecated，注释「旧 session/* 删除后 v4/ 是唯一协议面」。我们不现在迁：桌面自己仍用旧 `session/create`，
-迁移没有功能收益只有工作量（v4 下行帧是 snapshot + 五种 delta 的投影模型，≥1 MiB 分片，要写一套套用器）。
-触发条件写死：任一旧方法在新版 App 上返回 -32601，或发版说明宣布删除旧 `session/*`。路线已在
-`docs/PLAN-v4.md` 线 D 写清（`v4/conversation/subscribe` → 套用 snapshot/delta → 回合结束看
-`turnHeader.state` / `control.phase`），D17 的 `command()` 是起点；审批仍答反向请求，不必改成 `resolveInteraction`。
+## D18 The old protocol surface is heading for retirement; defer v4 subscription and projection
 
-## D19 账号型 Coding Plan 从 credentials.json 解出平台 key，走 D14 同一条路
+Decision (2026-09-21): ZCode 3.14 source marks `session/send` (partly), `session/stop`, and `session/fork`
+@deprecated, with a comment saying "after old session/* is deleted, v4/ is the only protocol surface." Do not migrate now: the desktop itself still uses old `session/create`,
+and migration brings work without a functional benefit (v4 downstream frames use a projection model of snapshot + five delta types, with ≥1 MiB chunks, requiring an applier).
+The trigger is fixed: any old method returns -32601 on a new App version, or release notes announce removal of old `session/*`. The route is documented in
+track D of `docs/PLAN-v4.md` (`v4/conversation/subscribe` → apply snapshot/delta → determine turn completion from
+`turnHeader.state` / `control.phase`); D17's `command()` is the starting point. Approvals still answer reverse requests; there is no need to switch to `resolveInteraction`.
 
-定了什么（2026-09-21，T6-C）：provider 表加第二个来源。`~/.zcode/v2/credentials.json`（ZCode App 替
-OAuth 登录的用户领的平台 API key，值形如 `enc:v1:<iv>.<tag>.<密文>`，AES-256-GCM，密钥 =
-sha256(`ZCODE_CREDENTIAL_SECRET` 或 `zcode-credential-fallback:<platform>:<homedir>:<username>`)）里只读
-四个键：`oauth:active_provider`、`oauth:<family>:user_info`（取 id）、个人版与团队版两把
-`account-provider:coding-plan:...:api-key`。解出的 key 配内置 provider 文件里 `account:*-coding-plan` 条目的
-baseUrl 与模型表（`modelRules` 正则忽略大小写匹配 modelId，多条命中后面覆盖前面），拼成与 legacy config.json
-同形状的 registry 元素（`buildAccountProviders`）。之后写临时个人 provider 文件、建会话、模型审批全走 D14
-的现有路径，协议层零改动；个人文件里 `access.type` 仍写 `api-key`——解出来的 key 就是普通平台 key，
-App 自己也这么用。pickProvider 优先级插入账号型两档（`preferredProvider` > `account:*-individual-coding-plan`
-> `account:*-team-coding-plan` > `-coding-plan` > `-start-plan` > 其它）。任一来源缺失只记 warning，两个来源
-加起来一个 provider 都没有才报错（message 带两个原因，doctor ② 分行报两个来源的状态）。
+## D19 Decrypt the platform key for account-based Coding Plans from credentials.json; use the same D14 path
 
-为什么不走 `provider/updateAccountConfig`：它只收 `access.type:"zhipu-account"` 的账号型条目，塞 `apiKey`
-直接被拒；应答账号型的 `interaction/requestProviderRuntimeHeaders` 要的也是同一把 key，白多一套 revision
-维护；start-plan 用的是会过期的 jwt；写用户的 `~/.zcode/v2/provider_config.json` 会和 App 打架（D14 已排除）。
+Decision (2026-09-21, T6-C): add a second provider-registry source. Read only
+four keys from `~/.zcode/v2/credentials.json` (the platform API keys ZCode App obtains on behalf of OAuth users; values look like `enc:v1:<iv>.<tag>.<密文>`, where `<密文>` means ciphertext;
+AES-256-GCM, key = sha256(`ZCODE_CREDENTIAL_SECRET` or `zcode-credential-fallback:<platform>:<homedir>:<username>`)):
+`oauth:active_provider`, `oauth:<family>:user_info` (for id), and the individual/team
+`account-provider:coding-plan:...:api-key` keys. Combine the decrypted keys with the baseUrl and model lists in the builtin provider file's `account:*-coding-plan` entries
+(`modelRules` regexes match modelId case-insensitively; later matching rules overwrite earlier ones), producing registry elements with the same shape as legacy config.json
+(`buildAccountProviders`). Writing the temporary personal provider file, creating sessions, and model review all then use D14's
+existing path, with zero protocol-layer changes. The personal file still specifies `access.type` as `api-key`: the decrypted key is an ordinary platform key,
+and the App uses it the same way. Insert two account tiers into pickProvider priority (`preferredProvider` > `account:*-individual-coding-plan`
+> `account:*-team-coding-plan` > `-coding-plan` > `-start-plan` > others). A missing source only records a warning; error only when neither source
+provides any provider (message contains both reasons; doctor ② reports the two sources' status on separate lines).
 
-风险与边界：密钥派生依赖 platform/homedir/username（换机器、改用户名都解不开——解不开就明确报「不可用」，
-不静默）；App 登出会删掉 credentials.json 里的 key，来源消失后回落 legacy；键名是 App 的私有实现，改了
-同样读不到。credentials.json 只读、只解四个键，其余键（OAuth 令牌一类）一律不读不解；解出的 key 与
-config.json 的 apiKey 同一待遇（RULES §6、§8）。
+Why not `provider/updateAccountConfig`: it accepts only account entries with `access.type:"zhipu-account"`; inserting `apiKey`
+is immediately rejected. Answering the account provider's `interaction/requestProviderRuntimeHeaders` needs the same key, merely adding another set of revision
+maintenance; start-plan uses an expiring jwt; writing the user's `~/.zcode/v2/provider_config.json` conflicts with the App (already ruled out in D14).
 
-重开条件：zcode 提供不落盘的账号型 provider 推送方法；或 key 不再放 credentials.json / 不再这么加密。
+Risks and boundaries: key derivation depends on platform/homedir/username (moving machines or changing usernames prevents decryption; explicitly report "不可用"—"unavailable"—
+rather than failing silently). App sign-out deletes keys from credentials.json; when that source disappears, fall back to legacy. Key names are private App implementation details; changes
+also make them unreadable. credentials.json is read-only and only four keys are decrypted; do not read or decrypt other keys (such as OAuth tokens). Treat the decrypted keys
+exactly like config.json's apiKey (RULES §6, §8).
 
-## D20 闲时任务：自己取号排队，回合走官方闲时 provider；credentials.json 多读 `zcodejwttoken`
+Reopen when: ZCode provides a non-persistent way to push account providers; or keys are no longer stored in credentials.json / encrypted this way.
 
-定了什么（2026-09-27）：闲时任务（off-peak，Coding Plan 订阅免费、不占套餐额度）由我们自己实现桌面宿主那一半：
-直连 `https://zcode.z.ai/api/v1/off-peak` 的取号、轮询、结算接口；票就绪后在 app-server 里先推
-`provider/updateAccountConfig` 把内置 `account:<family>-offpeak-idle-plan` 标成已授权
-（`basedOnZCodeBuiltinRevision` = `zcode-builtin:<内置文件 revision>:<sha256(内置文件绝对路径)>`），
-再 `session/send` 带 `modelSelection`、`modelExecution.requestAuth`（JWT、Coding Plan key、票号）、
-`offPeakTaskId`、`offPeakRunType`。为此 credentials.json 在 D19 的四个键之外多解一个 `zcodejwttoken`，
-修订 D19「OAuth 令牌一类一律不读不解」——只放开这一个键，其余照旧不读。
+## D20 Off-peak tasks: obtain tickets and queue ourselves, run turns through the official off-peak provider; additionally read `zcodejwttoken` from credentials.json
 
-为什么：闲时服务器只认这个 JWT，没有别的来源。回合不自己发 HTTP、改走 CLI 的官方闲时 provider：CLI 对
-z.ai 域名强制客户端签名，只有账号型 off-peak 免签；而且 CLI 自带「3105/429 还在排队就退避重试」「3102
-票过期」的判定。真机端到端跑通（verified.md「闲时任务探针」）。不做成 CLI 反向请求 `offPeak/create` 的唯一
-入口：那条只在执行端自己的模型要求闲时时才来，工头派单用的是我们自己的入口；反向请求可以后补，走同一套核心。
+Decision (2026-09-27): for off-peak tasks (free with a Coding Plan subscription, without consuming plan quota), implement the desktop host's half ourselves:
+connect directly to the ticket, polling, and settlement endpoints at `https://zcode.z.ai/api/v1/off-peak`. Once a ticket is ready, first push
+`provider/updateAccountConfig` in app-server to mark builtin `account:<family>-offpeak-idle-plan` as authorized
+(`basedOnZCodeBuiltinRevision` = `zcode-builtin:<内置文件 revision>:<sha256(内置文件绝对路径)>`, meaning builtin-file revision and sha256 of its absolute path),
+then call `session/send` with `modelSelection`, `modelExecution.requestAuth` (JWT, Coding Plan key, ticket number),
+`offPeakTaskId`, and `offPeakRunType`. This requires decrypting one more credentials.json key, `zcodejwttoken`, in addition to D19's four,
+revising D19's "do not read or decrypt OAuth tokens": allow this one key only; leave all others unread.
 
-风险与边界：接口与键名都是 App 私有实现，改了闲时这条路就断，普通派单不受影响；JWT 没有过期时间、权限大，
-与 plan key 同一待遇——只进内存、secrets 抹除名单和 JSON-RPC 参数，不落盘、不进 runs/ 和日志（探针已确认 CLI
-不把 requestAuth 写进 ~/.zcode/cli）；免费取号次数有限，票过期重取要设上限；就绪只有约 5 分钟，运行最长 3 小时。
+Why: the off-peak server accepts only this JWT, with no other source. Do not issue HTTP requests for the turn ourselves; use the CLI's official off-peak provider. The CLI enforces
+client signatures for z.ai domains, with only account-based off-peak exempt; it also already handles "3105/429 means still queued, back off and retry" and "3102
+means expired ticket." The live end-to-end path passed ([verified.md](verified.md), "Off-peak task probe"). Do not make CLI reverse request `offPeak/create` the only
+entry point: it occurs only when the executor's own model asks for off-peak; the foreman dispatches through our own entry point. Reverse requests can be added later using the same core.
 
-规则（2026-09-27 grill 定下，细节见 docs/SPEC-offpeak.md，本地记录，不进仓库）：
-- 入口是 `send <id> <正文> --offpeak`；会话没有类型，闲时是投递的属性。闲时投递独占空闲会话：会话有活 runner 或
-  队列非空就拒绝（退出码 2）；排号期间同一会话的其他投递也拒绝。约定另开会话专门发闲时投递，完成后可在同一会话
-  发普通或闲时投递返工。
-- 当场取号，取号失败（没资格、额度用完、接口变了）退出码 2；不带 `--wait` 取号成功即以 0 返回；`--wait` 的超时只从
-  回合开跑算起。
-- 模型与思考等级沿用会话，模型须在闲时列表里；只支持两个系列的个人版。
-- 闸门不变：挂起由派单方应答；模型审批仍走普通 provider。
-- 号过期或失效自动重取，一次投递最多重取 2 次，用完以回合异常结束（退出码 4）；任何终局都结算号，结算失败重试 3 次后
-  只在 status 里挂提示。macOS 上等号与运行期间用 caffeinate 防空闲睡眠。
-- doctor 第 ⑤ 项 / `doctor --offpeak` 零额度查四层（凭据、内置条目、服务器约定、假号全链路），结论
-  ok / changed / unavailable / not-applicable，只有 changed 让退出码为 1；记录验证过的 App 版本，不一致只提示。
-- 不做：send 前自动跑自检、定时自检（用户自己配 cron）；接 CLI 的反向请求 `offPeak/create`；团队版。
-- 2026-09-28 用户补充：派单**默认普通投递**。闲时只作为选项告诉用户——每个对话第一次派单前跑零额度的 `quota`，
-  说明「可以改走闲时（免费、开跑时间不定），今天本工具已用 N 次、现在能不能取」，用户选了才发 `--offpeak`；返工同样默认普通投递
-  （取代原来「返工超过 20 分钟可由 Claude 自己决定走闲时」）。理由：服务器不告诉剩余次数，每天约 3 次很容易被一次投递的重取用光，
-  用不用闲时应该由用户知情后决定。
+Risks and boundaries: endpoints and key names are private App implementation details; changes break the off-peak path without affecting ordinary dispatch. The JWT has no expiry and broad privileges;
+treat it like the plan key: only in memory, the secrets-redaction list, and JSON-RPC parameters; never on disk, in runs/, or logs (the probe confirmed that the CLI
+does not write requestAuth into ~/.zcode/cli). Free ticket requests are limited, so cap retries after ticket expiry; readiness lasts only about 5 minutes, with a maximum runtime of 3 hours.
 
-重开条件：ZCode 把闲时队列放进 app-server（CLI 自己排队）或提供正式 API；或服务器开始要求客户端签名。
+Rules (agreed in the 2026-09-27 grill; details in `docs/SPEC-offpeak.md`, local record, not committed):
 
-## D21 start plan 投递：会话不改型，逐回合改道，宿主反向请求喂 JWT
+- Entry point: `send <id> <正文> --offpeak` (`<正文>` means message body). Sessions have no type; off-peak is a send property. An off-peak send exclusively occupies an idle session:
+  reject if the session has a live runner or nonempty queue (exit code 2); reject other sends to the same session while queuing too. Convention: create a separate session for off-peak sends;
+  after completion, ordinary or off-peak sends in the same session can request rework.
+- Obtain a ticket immediately; ticket failure (ineligible, quota exhausted, endpoint changed) is exit code 2. Without `--wait`, successful ticket acquisition returns 0 immediately; `--wait` timeout starts only
+  when the turn starts running.
+- Keep the session's model and thought level; the model must appear in the off-peak list. Support only individual plans from the two families.
+- Gate unchanged: the dispatcher answers pending requests; model review still uses the regular provider.
+- Automatically reacquire expired or invalid tickets, at most 2 reacquisitions per send; exhausting them ends the turn with an error (exit code 4). Settle the ticket on every terminal outcome; after 3 settlement retries,
+  leave only a status warning. On macOS, use caffeinate to prevent idle sleep while waiting for a ticket and during execution.
+- doctor item ⑤ / `doctor --offpeak` checks four layers at zero quota cost (credentials, builtin entry, server contract, fake-ticket end-to-end path), reporting
+  ok / changed / unavailable / not-applicable. Only changed yields exit code 1; record the verified App version and merely warn on a mismatch.
+- Do not implement: automatic self-check before send, scheduled self-checks (users configure cron themselves); CLI reverse request `offPeak/create`; team plans.
+- User addition on 2026-09-28: dispatch **defaults to ordinary sends**. Offer off-peak only as a choice: before the first dispatch in each conversation, run zero-quota `quota`,
+  explain "off-peak is available instead (free, uncertain start time); this tool has used it N times today, and here is whether a ticket can be obtained now," and send `--offpeak` only if the user chooses it. Rework also defaults to ordinary sends
+  (replacing "Claude may choose off-peak itself for rework taking over 20 minutes"). Reason: the server does not report remaining requests; the roughly 3 daily requests can easily be consumed by reacquisitions for one send,
+  so the user should make an informed choice about off-peak.
 
-定了什么（2026-09-29，重开 PLAN-v4 线 3「start-plan 不做」）：`send <id> <正文> --start-plan`。投递的属性（D20 同一哲学：
-会话没有类型），照普通投递入队、过闸门、计时与退出码，没有号、不等待、不结算；只有这一回合的模型请求改走内置
-`account:<family>-start-plan` 条目（端点 `https://zcode.z.ai/api/v1/zcode-plan/anthropic`），吃 Start Plan 订阅额度。
-send 前置（退出码 2）：会话模型在该条目的 `builtinModelIds` 里（GLM-5.3-Flash、GLM-5.2、GLM-5-Turbo——GLM-5.3 不在表里）、
-凭据能解出 family（`oauth:active_provider`）与 `zcodejwttoken`（`readStartPlanAuth`，不需要 coding plan key 与 user_info）、
-内置文件里有该条目。与 `--steer` / `--offpeak` / `--resume` 同用是用法错（退出码 1）。runner 起连接前看队列头，是 start plan
-项就先把 JWT 进 secrets 与 providerAuth；send 前推 `provider/updateAccountConfig` 授权该条目（revision 前缀
-`zcode-executor-start-plan:`，形状与 D20 同款），send 带 `modelSelection`（逐回合改道）与
-`modelExecution:{selectionScope:"execution", memoryExtraction:"skip"}`，记事件 `executor.startplan.started`。
+Reopen when: ZCode moves off-peak queuing into app-server (the CLI queues itself) or provides an official API; or the server starts requiring client signatures.
 
-为什么这么做（2026-09-29 对照本机 App 3.14.1 的 zcode.cjs 与 app.asar，出处与证据记在 docs/tasks/T8-startplan.md）：
-- CLI 只给 `mode:"off-peak"` 的回合认 send 参数里的内联 `modelExecution.requestAuth`；其余 zhipu-account（含 start-plan）
-  一律在每次模型请求前发反向请求 `interaction/requestProviderRuntimeHeaders`。所以 start plan 的鉴权只能走反向请求，
-  appserver.mjs 现成的 providerAuth 钩子应答形状（`{headersApplied:true, requestAuth:{apiKey}}`）正好够。
-- App 宿主给 start-plan 的材料（app.asar `createAccountProviderRequestAuthService.resolveCurrent`）就是
-  `{apiKey: <zcodejwttoken>}`：JWT 单独当凭据、没有额外头、不需要 coding plan key——credentials.json 里本来就没有
-  start-plan 的 key 键。这也是 `readStartPlanAuth` 不要求 user_info 与两把 plan key 的依据。
-- CLI 对 `mode:"start-plan"` 的 zhipu-account 免客户端签名（zcode.cjs `wEs`）；而个人 provider 文件是 api-key 型 provider，
-  指到 zcode.z.ai 会被按域名强制签名、JWT 又不是 `id.secret` 形状（verified.md 2026-09-28「签名 key 须一个点」），
-  所以「拼一条 api-key 型 provider 进个人文件」这条捷径是死的，必须走账号型。
-- `modelExecution.selectionScope` 必须是 `"execution"`（send 参数 schema 的必填字面量）：语义是逐回合改道。缺了它
-  modelSelection 可能落成会话当前模型，之后的普通投递被带着改道、而那个 runner 手上没有 JWT，回合只会失败。
+## D21 Start-plan sends: leave the session unchanged, route each turn separately, supply JWT through host reverse requests
 
-重开 PLAN-v4 线 3 的理由：当时（2026-09-21）记的「start-plan 用的是会过期的 jwt、要自己刷 OAuth」错了两处——
-`zcodejwttoken` 在 D20 已解、真机未见过期；宿主的 start-plan requestAuth 也不需要刷 OAuth，把同一个 JWT 按反向请求
-喂给 app-server 即可。
+Decision (2026-09-29, reopening PLAN-v4 track 3, "do not implement start-plan"): `send <id> <正文> --start-plan` (`<正文>` means message body). A send property (the same philosophy as D20:
+sessions have no type), with the same queue, gate, timing, and exit codes as ordinary sends; no ticket, waiting, or settlement. Only this turn's model requests use the builtin
+`account:<family>-start-plan` entry (endpoint `https://zcode.z.ai/api/v1/zcode-plan/anthropic`), consuming Start Plan subscription quota.
+Send prerequisites (exit code 2): the session model appears in that entry's `builtinModelIds` (GLM-5.3-Flash, GLM-5.2, GLM-5-Turbo; GLM-5.3 is absent);
+credentials yield family (`oauth:active_provider`) and `zcodejwttoken` (`readStartPlanAuth`, requiring neither Coding Plan key nor user_info);
+and the builtin file contains the entry. Combining with `--steer` / `--offpeak` / `--resume` is a usage error (exit code 1). Before opening a connection, the runner checks the queue head; for a start-plan
+item it first adds JWT to secrets and providerAuth. Before send, push `provider/updateAccountConfig` to authorize the entry (revision prefix
+`zcode-executor-start-plan:`, same shape as D20); send includes `modelSelection` (per-turn routing) and
+`modelExecution:{selectionScope:"execution", memoryExtraction:"skip"}`, and records `executor.startplan.started`.
 
-风险与边界：接口与键名是 App 私有实现，改了这条通道就断，普通派单不受影响；Start Plan 忙（3008/3009/3010）CLI 自带
-退避与恢复；captcha（3007）CLI 会再要一次运行时头（我们答同一个 JWT），需要人过验证码时回合以错误结束。providerAuth
-答不出（凭据没了）回合立刻失败，不傻等 180 秒。JWT 待遇同 D20：只进内存、secrets 抹除名单与 JSON-RPC 应答。
-不做 doctor ⑥：凭据与条目缺失由 send 前置检查兜住，接口变了会在下一次投递的回合错误里现形。
+Why (2026-09-29 comparison with local App 3.14.1's zcode.cjs and app.asar; sources and evidence in `docs/tasks/T8-startplan.md`):
 
-重开条件：CLI 开始对 start-plan 回合认别的鉴权来源；或内置条目的 mode、模型表变了（模型表以 `startPlanModelIds`
-读内置文件为准，App 改了跟着改）。
+- The CLI recognizes inline `modelExecution.requestAuth` in send parameters only for turns with `mode:"off-peak"`; every other zhipu-account (including start-plan)
+  sends reverse request `interaction/requestProviderRuntimeHeaders` before every model request. Start-plan authentication must therefore use reverse requests;
+  appserver.mjs's existing providerAuth hook reply shape (`{headersApplied:true, requestAuth:{apiKey}}`) is sufficient.
+- The material supplied by the App host for start-plan (app.asar `createAccountProviderRequestAuthService.resolveCurrent`) is simply
+  `{apiKey: <zcodejwttoken>}`: JWT alone is the credential, without extra headers or a Coding Plan key. credentials.json has no
+  start-plan key in the first place. This is also why `readStartPlanAuth` does not require user_info or the two plan keys.
+- The CLI exempts zhipu-account with `mode:"start-plan"` from client signatures (zcode.cjs `wEs`); a personal provider file, however, defines api-key providers,
+  and pointing one at zcode.z.ai forces domain-based signing, while JWT is not shaped like `id.secret` ([verified.md](verified.md), 2026-09-28, "Signing keys require one dot").
+  The shortcut of constructing an api-key provider in the personal file is therefore a dead end; an account provider is required.
+- `modelExecution.selectionScope` must be `"execution"` (a required literal in the send-parameter schema), meaning per-turn routing. Without it,
+  modelSelection may become the session's current model, rerouting later ordinary sends too; their runner has no JWT and the turn can only fail.
 
-真机验证（2026-09-29，详见 verified.md「start plan 投递真机探针」）：实现全链路按设计工作（授权推送、改道、
-宿主喂 JWT、请求到达 zcode-plan 端点），但服务器以 HTTP 400 `captcha verify failed` 拒绝——zcode-plan 端点要求
-阿里云验证码（`x-aliyun-captcha-verify-param`），桌面 App 宿主靠内嵌验证码 SDK 应答，无头宿主造不出这个头，
-CLI 的 standalone 端口也因此只支持 individual-coding-plan。**结论：start plan 通道目前是 App-UI 依赖的，
-执行端侧的实现保留但用不了**；`--start-plan` 会以清晰的回合失败（退出码 4）结束，普通投递与闲时投递不受影响。
-重开条件追加：服务器对账号型 start plan 放行验证码要求（比如像 coding plan 那样发平台 key），或提供无头宿主
-可复用的验证凭据。
+Reason for reopening PLAN-v4 track 3: the 2026-09-21 note, "start-plan uses an expiring jwt and requires refreshing OAuth ourselves," was wrong in two ways:
+D20 already decrypts `zcodejwttoken`, with no expiry observed live; the host's start-plan requestAuth does not need OAuth refresh either. Simply feed the same JWT
+to app-server in response to reverse requests.
 
-**撤除（2026-10-02，2026-10-09 重开）**：曾因上面的验证码闸门整体拿掉（反向撤销 e26fedb）；2026-10-09 服务器对账号型
-start plan 不再要求人机验证（重开条件满足），拣回旧实现（e26fedb 的代码与测试），真机验证见 verified.md。
-
-## D22 观察面板做成 Claude Code mod，数据只从 `watch` 子命令来
-
-定了什么（2026-10-02）：在插件里加一个只在 Claude Code 里生效的观察面板（`hooks/`，Claude Code 的函数钩子插件，俗称 mod）。
-`/zcode` 打开，Claude 投递时自动打开，实时显示本项目各会话的回复、工具、挂起与闲时排队；配状态栏汇总与弹出提示。
-命令行新增常驻只读的 `watch --json` 推送会话快照，mod 起一个 `watch` 子进程用到会话结束。
-
-为什么这么做：
-- 派出去的任务原来只能靠 Claude 去 `status` / `follow` 轮询，人看不到过程；mod 能画面板、状态栏、提示，零额度。
-- mod 运行环境没有 Node，不能 import `lib/`。让它直接读 `runs/` 就要在 mod 里重写一遍阶段判断（`phaseOf` 要查进程是否活着，mod 做不到），
-  所以数据只从 CLI 来，判断逻辑只留一份。用常驻 `watch` 推送而不是 mod 定时调 `status`：事件文件最大 121MB，每次从头读不起。
-- 面板只看不应答：审批与提问仍由 Claude 用 AskUserQuestion 转交（AGENTS.md 硬约束），面板上不放批准按钮。
-- 只显示当前 Claude 会话所在仓库的会话（所属仓库按 git 共同数据目录判定，见 CONTEXT.md）。
-- 桌面版的动态图标用 `Svg` 的图片模式加 SVG 内的 CSS 动画：2026-10-02 实测 `isInteractive` 的沙箱框会被宿主不定时刷新、明显闪烁，图片模式照播不闪（verified.md）。
-
-风险与边界：mod 接口在 Claude Code 里标着早期预览，可能随版本变；所以 mod 只用少数接口，逻辑都在 CLI。只有 Claude Code 认 mod，
-Codex、Gemini、Copilot、Grok 照旧只有 skill 与 CLI。函数钩子在正式安装的插件里是否默认启用，以检查点实测为准。
-
-重开条件：Claude Code 撤掉或大改函数钩子接口；或需要在面板上应答挂起（要先改 AGENTS.md 的硬约束）。
-
-实测（2026-10-02，verified.md「Claude Code mod」）：桌面版检查点 W1–W9 用户报告通过，Claude 投递时面板自动打开、宽度正常；`watch` 首轮对本机 219 条会话约 0.4 秒、稳态 CPU 约 4%。
-v0.4.1（2026-10-03）：回复按 Markdown 显示最新一条消息（快照新增 `replyMarkdown`，截断时补回代码块围栏与表格表头），超过两行默认收起、按钮展开。
-未验证：其他宿主读到只有 `modules` 的 `hooks/hooks.json` 会不会报错（Codex、Copilot CLI 若按 Claude 的 hooks 约定读这个文件）；有人报错再改清单。
+Risks and boundaries: endpoints and key names are private App implementation details; changes break this channel without affecting ordinary dispatch. The CLI already handles
+backoff and recovery when Start Plan is busy (3008/3009/3010); for captcha (3007), it requests runtime headers again (we answer with the same JWT), and the turn ends with an error if a human must solve the CAPTCHA. If providerAuth
+cannot answer (credentials gone), fail the turn immediately instead of waiting pointlessly for 180 seconds. Treat JWT as in D20: only memory, the secrets-redaction list, and JSON-RPC replies.
+Do not add doctor ⑥: send prerequisites cover missing credentials and entries; interface changes surface as a turn error on the next send.
 
-## D23 闸门自保，以及 2026-10-08 安全审计的取舍
+Reopen when: the CLI recognizes other authentication sources for start-plan turns; or the builtin entry's mode/model list changes (read the model list from the builtin file through `startPlanModelIds`
+and follow App changes).
 
-定了什么（2026-10-08，外部安全审计 D1–D9 逐条在代码与本机上核实后）：
+Live verification (2026-09-29; see [verified.md](verified.md), "Start-plan send live probe"): the entire implementation chain works as designed (authorization push, rerouting,
+host-supplied JWT, requests reaching the zcode-plan endpoint), but the server rejects with HTTP 400 `captcha verify failed`. The zcode-plan endpoint requires
+an Alibaba Cloud CAPTCHA (`x-aliyun-captcha-verify-param`); the desktop App host answers through its embedded CAPTCHA SDK, and a headless host cannot produce that header.
+For the same reason, the CLI's standalone port supports only individual-coding-plan. **Conclusion: the start-plan channel currently depends on the App UI;
+the executor-side implementation remains, but cannot be used**. `--start-plan` ends with a clear turn failure (exit code 4); ordinary and off-peak sends are unaffected.
+Additional reopen condition: the server waives CAPTCHA requirements for account-based start-plan (for example, issuing platform keys as for Coding Plans), or provides verification credentials
+a headless host can reuse.
 
-1. **越界红线照内核的走法判界**（审计 D1）。原先 `path.resolve` 之后再 `realpathSync`，`<执行副本>/link/../x` 先被词法折叠成看着在界内的 `<执行副本>/x`，
-   实际写入落在链接目标的上一级。现在从根逐段解析（符号链接就地展开，`..` 退到真实父目录，末段的悬空链接也跟），原串与词法归一后的串各算一遍，任一越界即命中；
-   落点判不了、写类工具拿不出可判路径，一律命中。
-2. **闸门自保**（审计 D2）。执行端碰本工具的数据目录（默认执行副本根 `worktrees/` 与本会话的执行副本除外）或调本工具的 CLI，机械转人工，挂在 `self-modify-approval` 名下。
-3. **任务单在入队时留快照，审批只读快照**（审计 D3）。`runs/<id>/tasks/<sha256>.md`，哈希记进队列项与 `executor.send`。
-4. 窄面加固：zcode 子进程不带宿主代理的凭据环境变量（D4）；`runs/` 树 0700、落盘 0600、`pending.json` 按值抹密（D5）；审批探针的 git 关掉 fsmonitor、钩子、外部 diff、textconv、filter 驱动（D6）；
-   快筛只认独立成词且唯一的 Y（D8）；输出里的终端控制字符转义（D9-①）；原子写的临时名加随机段并排他创建（D9-②）；反向请求的应答缓存只留到回合边界（D9-③）。
+**Removal (2026-10-02; reopened 2026-10-09)**: the entire implementation was once removed because of that CAPTCHA gate (reverting e26fedb); on 2026-10-09 the server no longer required human verification for account-based
+start-plan (the reopen condition was met), and the old implementation was restored (e26fedb's code and tests); see [verified.md](verified.md) for live verification.
 
-为什么这么做：
+## D22 Implement the watch pane as a Claude Code mod; data comes only from the `watch` subcommand
 
-- 执行端 ZCode 与 runner 是**同一个用户**。它写 `answer.json`、跑 `zcode-executor approve`，文件权限和属主校验一概挡不住，所以审计明说不接受「只 chmod」的修法。
-  人工闸门是 D3「模型审批只产出放行或转人工」能成立的前提，这两样因此不交给模型判。
-- 自保的拦截面刻意很窄。审计原文说「匹配数据目录前缀不会误伤」，在本项目不成立：默认的执行副本就在 `~/.zcode-executor/worktrees/` 下，执行端的日常命令带着这段前缀。
-  所以放行 `worktrees/` 与本会话 cwd，其余才算管控面；CLI 只认「名字后面跟子命令」，光提到 `zcode-executor` 这个词（clone、grep、npm view）不算。
-- 快照放在数据目录而不是执行副本里：任务单照 skill 的要求放在执行副本里，执行端改得动，现读它等于让执行端自己写「用户说过的话」。
-  升级前落的 `executor.send` 没有快照，那几段任务单不再作审批依据——少一段依据只会更常转人工。
-- 新加的检查失败方向都是转人工：路径判不了、探针列不出 filter 驱动、快筛答得含糊，都不放行。
+Decision (2026-10-02): add a watch pane to the plugin that works only in Claude Code (`hooks/`, a Claude Code function-hook plugin, commonly called a mod).
+`/zcode` opens it; Claude sends open it automatically. Show live replies, tools, pending requests, and off-peak queues across this project's sessions, with a status-bar summary and pop-up notifications.
+Add a persistent, read-only `watch --json` CLI command that pushes session snapshots; the mod starts a `watch` child process and keeps it until the session ends.
 
-风险与边界（已知拦不住的，如实记着）：
+Why:
 
-- **自保只认直白写法**：字面路径、`~`、`$HOME`、`$PWD`、`$ZCODE_EXECUTOR_HOME`、相对的 `..`、CLI 名后跟子命令。拼变量、编码、先写个脚本再跑
-  （`npm test` 触发的代码去写 `answer.json`）认不出来，仍归模型审批与人。同一个用户之下没有根治；根治是系统级隔离（另起用户或沙箱），那是产品决策，不在这次范围。
-- 自举开发时会多转几次人工：提交信息、文档里写了 `zcode-executor send` 这样的原文，命令就会被拦下问人。转人工不是拒绝。
-- 硬链接：把执行副本外的文件硬链进来再原地 Edit，路径判界看不出来。审计没提，这次没处理。
-- 环境变量（D4）只是断掉直接继承这一条路。宿主代理和 runner 自己的进程环境、shell 的 rc 文件，同一个用户照样读得到。名单含 `GITHUB_TOKEN` / `GH_TOKEN`
-  （审计点名；Copilot CLI 的凭据，且能写远端）：执行端的任务要用 GitHub 凭据时走本机已登录的 gh / git 凭据助手。没有做成可配置。
-- `--deny "WebFetch WebSearch"` 从工具注册中移除这两个内置联网工具（包括 `web_search` 别名，verified.md 2026-10-08 源码核对），减少可用面；
-  Bash、js 和 MCP 工具仍可能联网，需要断网得由系统或容器限制网络。
-- 落盘权限（D5）挡的是同机别的用户。数据目录的根没有改成 0700：默认的执行副本根在它下面，容器里的构建用户之类可能要穿过它。
-- git 探针（D6）关的是已知开关，git 本身不保证在不可信的仓库配置下安全。子模块自己的配置关不到：`git status` 会进已检出的子模块再跑一遍 git，
-  那边定义的 filter 驱动名这里列不出来。filter 驱动这条审计没提，是核实 D6 时在本机实测出来的（verified.md 2026-10-08）。
-- `ApplyPatch` 在本机 3.14.4 的内置工具注册表中未找到实现（verified.md），现在一律转人工。真机发得出来时补丁格式要先抓到，再补路径提取。
+- Previously, dispatched tasks were observable only through Claude polling `status` / `follow`; humans could not see the process. A mod can draw panes, status bars, and notifications at zero quota cost.
+- The mod runtime has no Node and cannot import `lib/`. Reading `runs/` directly would require rewriting phase detection inside the mod (`phaseOf` checks whether processes are alive, which the mod cannot do),
+  so data comes only from the CLI, leaving one copy of the logic. Use persistent `watch` pushes rather than periodic mod calls to `status`: event files reach 121MB, making repeated full reads unaffordable.
+- The pane is view-only: Claude still relays approvals and questions with AskUserQuestion (AGENTS.md hard constraint); no approve button in the pane.
+- Display only sessions belonging to the repository of the current Claude session (determine the repository from git's shared data directory; see [CONTEXT.md](CONTEXT.md)).
+- Desktop animated icons use `Svg` image mode with CSS animation inside SVG: tests on 2026-10-02 showed the host irregularly refreshing `isInteractive` sandbox frames, causing obvious flicker; image mode animates without flicker ([verified.md](verified.md)).
 
-没改的，和理由：
+Risks and boundaries: Claude Code marks mod interfaces as early preview, subject to version changes; therefore use few interfaces in the mod and keep logic in the CLI. Only Claude Code recognizes mods;
+Codex, Gemini, Copilot, and Grok retain only the skill and CLI. Whether function hooks are enabled by default in a normally installed plugin is subject to checkpoint verification.
 
-- **慢判提示词不套 Jev 的启发式脱敏**（审计 D7）。提示词发往的就是执行端所在的同一个 provider，内容对方本来就有；启发式脱敏会把审批模型要看的参数遮掉，
-  反倒成了规避手段（把危险参数写成像凭据的样子）。`pending.json` 同理只按确切的密钥值抹，人要靠原文决定放不放。
-- **Write / Edit 的正文仍进快筛**（审计 D8 后半）。快筛拿到原始正文是既有的测试不变量（gate.test 里「原始正文，不得丢弃」那条），
-  背后是 T3.3 的成本取舍：任务单授权的界内写入在快筛就过，不必每次慢判。改它是产品决定。
-- 应答通道不改成 unix socket（审计 D2 的可选第二层）：同一个用户照样连得上，审计自己也说只是纵深；调 CLI 这条路已经被自保红线机械拦住，
-  再加一套 socket 的生命周期与跨平台处理不值。
-- README「worktree 是沙箱」的措辞、Jev pass 跳过 hard 散文规则：审计列为留给作者的产品与文档决策，没动。
+Reopen when: Claude Code removes or substantially changes function hooks; or answering pending requests in the pane is needed (first change the AGENTS.md hard constraint).
 
-重开条件：要给执行端上系统级隔离；zcode 真的发出 `ApplyPatch` 或别的写类工具；真机出现不带 `requestId` 的审批请求（现在按参数全文去重，够用但没验过）。
+Observed (2026-10-02, [verified.md](verified.md), "Claude Code mod"): the user reported desktop checkpoints W1–W9 passing; Claude dispatch opened the pane automatically at normal width. `watch` took about 0.4 seconds for the initial local 219 sessions, with steady CPU around 4%.
+v0.4.1 (2026-10-03): display the latest reply message as Markdown (snapshots add `replyMarkdown`, restoring code fences and table headers when truncated); collapse by default above two lines and expand with a button.
+Unverified: whether other hosts error when reading `hooks/hooks.json` containing only `modules` (if Codex or Copilot CLI reads it according to Claude's hook convention); change the manifest only after someone reports an error.
 
-## 补记：模型审批的模型从已推的 provider 表里选，不再多一次 readState
+## D23 Gate self-protection and tradeoffs from the 2026-10-08 security audit
 
-runner 起来时已经推了表，registry 里的模型清单与 readState 一致；省一次往返。代价是看不到后端的 `disabledReason`，
-真机上 coding plan 的两个模型都没被禁用过。哪天出现被禁用的模型再改成 readState。
+Decision (2026-10-08, after verifying external security-audit findings D1–D9 individually against code and the local machine):
 
-## 补记：项目文档不再等同用户意图，改从原仓库读（2026-09-28）
+1. **The out-of-bounds hard rule follows the kernel's path traversal** (audit D1). Previously, `path.resolve` before `realpathSync` lexically collapsed `<执行副本>/link/../x` to apparently in-bounds `<执行副本>/x`
+   (`<执行副本>` denotes the worktree), while the actual write landed one level above the symlink target. Now resolve segment by segment from the root (expand symlinks in place, let `..` move to the real parent, follow dangling symlinks in the final segment too); evaluate both the original string and the lexically normalized string, matching if either is out of bounds.
+   Unknown destinations, or write tools without an assessable path, always match.
+2. **Gate self-protection** (audit D2). If the executor touches this tool's data directory (excluding default worktree root `worktrees/` and this session's worktree), or invokes this tool's CLI, mechanically ask a human under `self-modify-approval`.
+3. **Snapshot task files on queue entry; review reads only snapshots** (audit D3). Store at `runs/<id>/tasks/<sha256>.md`, recording the hash in the queue item and `executor.send`.
+4. Narrow hardening: remove host-agent credential environment variables from the zcode child (D4); `runs/` tree 0700, persisted files 0600, redact `pending.json` by value (D5); disable fsmonitor, hooks, external diff, textconv, and filter drivers for approval-probe git (D6);
+   fast screen recognizes only a unique, standalone Y (D8); escape terminal control characters in output (D9-①); randomize temporary names for atomic writes and create exclusively (D9-②); retain reverse-request reply caches only until the turn boundary (D9-③).
 
-去掉放行例外 `documented-ops` 和 `shared-service-lifecycle` 里「文档列为常规运维就不适用」那句：仓库文档是仓库作者写的，
-陌生仓库或被执行端改过的 AGENTS.md 能借它清掉 soft 规则（与 dsh-auto-approve 同日修的是同一个问题）。
-文档来源从执行副本 cwd 换成 `new` 时记进登记簿的 `repoRoot`（原仓库根）；旧登记项和非 worktree 没有它，就不读文档，重新 `new` 即可。
+Why:
 
-## 暂缓
+- Executor ZCode and runner are **the same user**. File permissions and owner checks cannot stop it writing `answer.json` or running `zcode-executor approve`; the audit explicitly rejected "chmod only" fixes.
+  The human gate is the prerequisite for D3's "model review only produces allow or ask a human," so neither operation is delegated to a model.
+- Self-protection deliberately has a narrow matching surface. The audit's claim that "matching the data-directory prefix causes no false positives" is false here: default worktrees live under `~/.zcode-executor/worktrees/`, so routine executor commands contain that prefix.
+  Exempt `worktrees/` and this session's cwd; only the rest is the control plane. For CLI calls, recognize only "name followed by a subcommand"; merely mentioning `zcode-executor` (clone, grep, npm view) does not count.
+- Put snapshots in the data directory rather than the worktree: the skill requires task files in the worktree, where the executor can edit them. Reading the live file would let it write "what the user said" itself.
+  `executor.send` records from before the upgrade have no snapshots, so those task-file passages are no longer review evidence; less evidence can only cause more human referrals.
+- New checks always fail toward asking a human: an unresolvable path, a probe unable to enumerate filter drivers, or an ambiguous fast-screen answer never allows.
 
-- ~~挂起期间 zcode 每秒重发审批请求，对端对「回旧信封 id」认不认未验~~ 已验（2026-09-08 交付后核验②）：
-  挂起 75 秒后 approve，zcode 照样接受并继续，只保留最近 5 个信封 id 的做法够用。
+Risks and boundaries (recording known gaps honestly):
 
-- ZCode App 共存实验（本插件跑长任务时在 App 里点开同一条会话，看 cli log）。
-  两边共用 `~/.zcode/cli/db/db.sqlite`，无跨进程锁，SQLite 保文件不撕裂，
-  逻辑层是否错乱未验。先靠 worktree 隔离。
-- 往 `~/.zcode/v2/tasks-index.sqlite` 同步会话让 App 列表看到。第一版不做。
-- MCP 外壳与 elicitation。
-- 给 zcode-acp 上游报问题。现在不依赖它了，报不报看心情，报之前问用户。
-- 账号 provider 路线（`account:bigmodel-individual-coding-plan` + `provider/updateAccountConfig`）：推
-  `{access:{type:'zhipu-account',entitled:true}}` 返回 received，但 `session/create` 仍报 registry 里没有
-  这个模型，还要再拆 `states` 与内置活动文件的语义才能往下走。收益只是「会话在 App 里显示成同一个账号」，先记着。
-- 只支持 ZCode App 3.12+，不做新旧两套握手兼容。理由：`--version` 区分不出新旧（3.11.2 和 3.12.2 都打印
-  `0.16.5`），两套握手会让 mock 和测试翻倍；App 自动更新，用户机器回不去老版本。
-- `new` 时对非 worktree 的 cwd 也把所属仓库写进登记簿（D22）：现在 `repoRoot` 只在 worktree 时写，其余靠 `watch`/`list` 现查 git 并缓存。
-  登记簿格式要改、旧记录也没有这个字段，等现查成为瓶颈再做。
-- D23 留下的：`ApplyPatch` 的路径提取（等真机抓到补丁格式）；硬链接越界；宿主凭据环境变量名单做成可配置（有人因为少了 `GITHUB_TOKEN` 跑不通再说）；
-  审批探针改用不比对内容的管道命令（`diff-files` / `diff-index` / `ls-files`）并处理子模块，彻底不让仓库配置借它跑程序。
+- **Self-protection recognizes only direct forms**: literal paths, `~`, `$HOME`, `$PWD`, `$ZCODE_EXECUTOR_HOME`, relative `..`, and a CLI name followed by a subcommand. Constructed variables, encoding, or writing a script and then running it
+  (code triggered by `npm test` writing `answer.json`) are not recognized; they still go through model review and humans. There is no complete fix under the same user; a complete fix requires system isolation (another user or a sandbox), a product decision outside this scope.
+- Self-hosted development causes extra human referrals: commands containing literal `zcode-executor send`, for example in commit messages or documentation, are intercepted to ask a human. Referral is not denial.
+- Hard links: hard-link a file from outside the worktree inside it, then Edit in place, and path-boundary checks cannot detect it. The audit did not mention this; it was not addressed here.
+- Environment variables (D4) cut only direct inheritance. Under the same user, the host agent's and runner's own process environments and shell rc files remain readable. The list includes `GITHUB_TOKEN` / `GH_TOKEN`
+  (explicitly named in the audit; Copilot CLI credentials capable of remote writes). Executor tasks needing GitHub credentials use the locally authenticated gh / git credential helper. This is not configurable.
+- `--deny "WebFetch WebSearch"` removes those two builtin network tools from tool registration (including alias `web_search`; [verified.md](verified.md), 2026-10-08 source check), reducing the available surface;
+  Bash, js, and MCP tools can still access the network. Blocking network access requires system or container restrictions.
+- Persistence permissions (D5) protect against other users on the same machine. The data-directory root was not changed to 0700: the default worktree root sits below it, and users such as container build users may need to traverse it.
+- Git probes (D6) disable known switches; git itself does not guarantee safety under untrusted repository configuration. Submodules' own configuration cannot be disabled here: `git status` enters checked-out submodules and runs git again,
+  and filter driver names defined there cannot be enumerated here. The audit did not mention filter drivers; they were discovered by local tests while verifying D6 ([verified.md](verified.md), 2026-10-08).
+- No implementation of `ApplyPatch` was found in the local 3.14.4 builtin tool registry ([verified.md](verified.md)); it currently always asks a human. If live ZCode emits it, capture its patch format before adding path extraction.
 
-## D24 Jev 快筛可配代理：`review.jev.proxy`，CONNECT 隧道自实现，不走环境变量代理
+Unchanged, and why:
 
-定了什么（2026-10-28，用户要求给 Jev 请求加代理）：`~/.zcode-executor/config.json` 的 `review.jev.proxy`（非空 `http://`/`https://` URL，
-可含 userinfo 走 Basic Proxy-Authorization）配置后，Jev 快筛的 HTTP 请求经该代理的 CONNECT 隧道发出。实现是 `lib/review/proxy-fetch.mjs`
-零依赖自实现（`http.request` 发 CONNECT、隧道上套目标 TLS、`http(s).request` 的 `createConnection` 接管隧道 socket），包成 jev.mjs
-fetchImpl seam 需要的最小 Response。启用契约不变：仍只有非空白 `review.jev.apiKey` 启用 Jev；只配代理不配 key 时 `loadConfig` 给
-warning、代理不使用。deadline、重试、skip 与 ZCode 回退逻辑不变；代理不通按 network_error 走既有重试后回退。
+- **Do not apply Jev's heuristic redaction to slow-review prompts** (audit D7). Prompts go to the same provider as the executor, which already has the content; heuristic redaction would hide parameters needed by the review model,
+  becoming an evasion technique (make dangerous parameters resemble credentials). Similarly, `pending.json` redacts only exact secret values; humans need the original text to decide whether to allow.
+- **Write / Edit bodies still reach the fast screen** (latter half of audit D8). Receiving original bodies is an existing test invariant (the gate.test case "原始正文，不得丢弃", meaning "original body must not be discarded").
+  It reflects T3.3's cost tradeoff: in-bounds writes authorized by the task file pass the fast screen without slow review every time. Changing this is a product decision.
+- Do not change the answer channel to a unix socket (audit D2's optional second layer): the same user can still connect, and the audit itself calls this defense in depth. CLI invocation is already mechanically intercepted by the self-protection hard rule;
+  another socket lifecycle and cross-platform handling are not worth it.
+- README's "worktree is a sandbox" wording and Jev pass bypassing prose hard rules: the audit left these as product/documentation decisions for the author; unchanged.
 
-为什么：Jev 端点在境外，直连不稳定。不用 `NODE_USE_ENV_PROXY`：它只在进程启动时解析 env（undici 官方文档，Node ≥22.21 才有），
-detached runner 的 env 继承不可靠（与 D15 的 key 同理走 config.json），且代理 env 经 spawn 传下去会漏给 app-server 子进程，改变派单
-主链路的网络行为。零依赖约束（RULES §1）排除 undici `ProxyAgent`。
+Reopen when: system isolation is needed for the executor; ZCode actually emits `ApplyPatch` or another write tool; live permission requests arrive without `requestId` (currently deduplicated by full parameters, sufficient but unverified).
 
-什么情况下重开：需要 socks 代理或代理侧 mTLS；Node 原生提供运行期可设的 fetch 代理 API；Jev 之外的出站请求也需要代理时，把
-proxy-fetch 提升为工作流层共用模块。测试未覆盖 https 目标的隧道内 TLS 握手（零依赖下无法在测试里自签证书），真机验证后补 verified.md。
+## Addendum: select model-review models from the provider registry already pushed, without another readState
 
-## D25 Jev 模型名可配：`review.jev.model`，缺省从 pin `jev-1.13.0` 改为别名 `jev-latest`
+The runner already pushed the registry at startup, and the model list in registry matches readState, saving a round trip. The cost is losing backend `disabledReason` visibility;
+neither Coding Plan model has ever been disabled in live runs. Switch to readState if a disabled model appears.
 
-定了什么（2026-10-28，随 0.6.0 与 D24 同发）：`review.jev.model` 可选非空字符串，模型 ID 或别名，缺省 `jev-latest`（官方文档示例一律用别名，2026-10-14 起它解析到 `jev-1.14.0`）。响应 `model` 校验放宽为：钉版本号时必须严格一致；发别名时接受别名回显或解析出的版本号（`/jev-\d+\.\d+\.\d+/`），其余一律非法响应。metadata 成功路径报实际答题版本，错误路径报配置值。
+## Addendum: project documentation no longer equals user intent; read it from the original repository instead (2026-09-28)
 
-为什么：模型会换代，pin 死意味着每出一版都要发版跟上；文档自己也推荐别名。阈值 0.20 与 schema `approval-v2` 是按 `jev-1.13.0` 定的（SPEC 已标 v2 未真实重新校准），用别名等于接受「最新版阈值可能不再贴合」——这个风险随配置面交给用户，钉版本号即可回到旧行为。PLAN 早写明「首版仅 apiKey，模型常量化，需求出现再重开」，需求已出现。
+Remove allow exception `documented-ops` and the sentence "does not apply if documentation lists this as routine maintenance" from `shared-service-lifecycle`: repository documentation is written by the repository author,
+so an unfamiliar repository or executor-modified AGENTS.md could use it to clear soft rules (the same issue fixed in dsh-auto-approve that day).
+Change the documentation source from worktree cwd to `repoRoot` (original repository root), recorded in the registry at `new`. Older entries and non-worktrees lack it, so do not read documentation; run `new` again.
 
-什么情况下重开：别名解析出的新版本实测与阈值严重不匹配时，把缺省改回最新实测过的版本号，或给模型加各自独立的阈值表；TypeSafe 上新模型家族（非 jev-* 命名）时放宽校验规则。
+## Deferred
+
+- ~~While pending, ZCode resends permission requests every second; acceptance of replies to old envelope ids is unverified.~~ Verified (2026-09-08, post-delivery check ②):
+  after 75 seconds pending, approve was still accepted and ZCode continued. Keeping only the latest 5 envelope ids is sufficient.
+
+- ZCode App coexistence experiment (while this plugin runs a long task, open that same session in the App and inspect cli log).
+  Both share `~/.zcode/cli/db/db.sqlite`, without cross-process locks. SQLite prevents torn files;
+  logical consistency is unverified. Rely on worktree isolation for now.
+- Synchronize sessions into `~/.zcode/v2/tasks-index.sqlite` so the App list can see them. Not in the first version.
+- MCP shell and elicitation.
+- Report issues upstream to zcode-acp. We no longer depend on it; reporting is optional, and ask the user first.
+- Account-provider route (`account:bigmodel-individual-coding-plan` + `provider/updateAccountConfig`): pushing
+  `{access:{type:'zhipu-account',entitled:true}}` returns received, but `session/create` still reports that the registry lacks
+  the model. Further progress requires untangling `states` and the builtin active file's semantics. The only benefit is "the session appears under the same account in the App"; keep this noted for now.
+- Support only ZCode App 3.12+, without dual old/new handshake compatibility. Reason: `--version` cannot distinguish them (3.11.2 and 3.12.2 both print
+  `0.16.5`); dual handshakes would double mocks and tests; the App auto-updates, and user machines cannot return to old versions.
+- At `new`, record the owning repository in the registry even for non-worktree cwd (D22): currently `repoRoot` is written only for worktrees; otherwise `watch`/`list` query git live and cache the result.
+  This would change the registry format, and old records lack the field; wait until live lookup becomes a bottleneck.
+- Left by D23: `ApplyPatch` path extraction (wait for a live patch-format capture); hard-link boundary crossing; make the host-credential environment-variable list configurable (revisit if someone cannot run without `GITHUB_TOKEN`);
+  switch approval probes to plumbing commands that do not compare contents (`diff-files` / `diff-index` / `ls-files`) and handle submodules, fully preventing repository configuration from executing programs through them.
+
+## D24 Configurable proxy for Jev fast screening: `review.jev.proxy`, a self-implemented CONNECT tunnel, without environment-variable proxies
+
+Decision (2026-10-28, user request to proxy Jev requests): configure `review.jev.proxy` in `~/.zcode-executor/config.json` (a nonempty `http://`/`https://` URL,
+optionally containing userinfo for Basic Proxy-Authorization) to send Jev fast-screen HTTP requests through that proxy's CONNECT tunnel. `lib/review/proxy-fetch.mjs`
+implements this with zero dependencies (`http.request` sends CONNECT, wrap the tunnel in target TLS, and `http(s).request`'s `createConnection` takes over the tunnel socket), wrapping the result as the minimal Response
+required by jev.mjs's fetchImpl seam. The enablement contract stays unchanged: only non-whitespace `review.jev.apiKey` enables Jev; proxy without key makes `loadConfig` issue a
+warning and leaves the proxy unused. Deadline, retry, skip, and ZCode fallback logic remain unchanged; an unreachable proxy becomes network_error, using existing retries before fallback.
+
+Why: the Jev endpoint is overseas and direct connections are unreliable. Do not use `NODE_USE_ENV_PROXY`: it parses env only at process startup (official undici documentation; available only from Node ≥22.21),
+a detached runner's environment inheritance is unreliable (use config.json, as for D15's key), and proxy env passed through spawn would leak to the app-server child, changing the main dispatch
+path's network behavior. The zero-dependency constraint (RULES §1) rules out undici `ProxyAgent`.
+
+Reopen when: SOCKS or proxy-side mTLS is needed; Node natively provides a fetch proxy API configurable at runtime; outbound requests other than Jev also need proxying, in which case
+promote proxy-fetch to a shared workflow-layer module. Tests do not cover the TLS handshake inside a tunnel to an https target (no self-signed test certificate with zero dependencies); update [verified.md](verified.md) after live verification.
+
+## D25 Configurable Jev model name: `review.jev.model`, default changes from pinned `jev-1.13.0` to alias `jev-latest`
+
+Decision (2026-10-28, released with D24 in 0.6.0): `review.jev.model` is an optional nonempty string, a model ID or alias, defaulting to `jev-latest` (official documentation examples all use the alias; since 2026-10-14 it resolves to `jev-1.14.0`). Relax response `model` validation: a pinned version must match exactly; an alias accepts either its echo or a resolved version (`/jev-\d+\.\d+\.\d+/`); everything else is an invalid response. Metadata reports the actual answering version on success, the configured value on error.
+
+Why: models change generations; a fixed pin requires a release for each new version, and the documentation recommends aliases. Threshold 0.20 and schema `approval-v2` were set for `jev-1.13.0` (SPEC marks v2 as not recalibrated live). Using an alias accepts that "the threshold may no longer fit the latest version"; expose that risk through configuration, where pinning a version restores old behavior. PLAN already said "first version only apiKey, model constant; reopen when needed," and the need has appeared.
+
+Reopen when: live tests show a newly resolved alias version badly mismatching the threshold; restore the default to the latest actually verified version or add per-model threshold tables. If TypeSafe adds a new model family not named jev-*, relax validation rules.
