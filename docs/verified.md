@@ -371,19 +371,6 @@ Local experiments (no zcode involved):
   (size-changed files skip content comparison and do not trigger it). `-c core.fsmonitor=false` does not control this; setting `filter.<名字>.process` to an empty string through `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_n` / `GIT_CONFIG_VALUE_n`
   stops it (clean and smudge are then also unused).
 
-## Claude Code mod (2026-10-02, Claude Code desktop, engine 2.1.286)
-
-- Function-hook plugin (mod) `$.process.run` / `$.process.spawn` work in the desktop Code tab (type file says “CLI only”);
-  desktop process PATH includes `~/.local/bin`, and `/usr/bin/env node` finds node (v22).
-- A command registered with `$.command.register({name})` is `/<name>`, without a plugin-name prefix.
-- Desktop `Svg` with `isInteractive: true` has its sandbox frame refreshed unpredictably by the host, visibly flickering (even after drawing the pane only once);
-  without it, SVG displays as an image, CSS keyframe animations still run without flicker, and redrawing the pane every 250 milliseconds also does not flicker.
-- `Text` / `Box` theme color keys (`warning`, `success`, `error`, `suggestion`, `inactive`) are resolved by the engine separately in light and dark themes.
-- Engine static validation (`claude plugin validate`) requires functions receiving `$` to be declared at module top level; closures inside `register` are rejected.
-- After setting `CLAUDE_CODE_PLUGIN_DIRS` (plus `CLAUDE_CODE_PLUGIN_DIR_WATCH=1`) through `env` in `~/.claude/settings.json`, newly opened desktop sessions load plugins from that directory without restarting the App.
-- Watch-pane checkpoint B (watch-pane branch, `watch` + `hooks/`): user tried W1–W9 on desktop and reported success (dispatch refresh, pending handoff, turn-end notification and cards,
-  project filtering, light/dark themes, reconnection, terminal version). W5: pane opens automatically with normal width when Claude runs `zcode-executor send` (desktop, user observation); W10 (other hosts reading `hooks/hooks.json` containing only `modules`) unverified.
-
 ## Claude Code side (official-documentation check)
 
 - Plugins can contain `skills/`, `bin/` (added to Bash PATH while enabled), and `.mcp.json`;

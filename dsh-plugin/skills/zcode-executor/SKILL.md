@@ -1,1 +1,0 @@
-../../../skills/zcode-executor/SKILL.md

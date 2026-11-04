@@ -156,8 +156,8 @@ pending content; when running in the background, check with `status <id>`.
    `zcode-executor deny <id>` and hand the reason back to the original execution session to adjust.
 3. **A human must decide**: out of scope (e.g. writes outside the worktree), new permissions or irreversible impact
    not authorized, insufficient evidence, or higher-level instructions explicitly require handoff → relay the tool
-   name, arguments, and reason verbatim, with your recommendation and open points (AskUserQuestion in Claude Code;
-   the host's escalation path in DSH); then `approve` / `deny` once decided. Never bypass a restriction by editing
+   name, arguments, and reason verbatim, with your recommendation and open points (AskUserQuestion in Claude Code);
+   then `approve` / `deny` once decided. Never bypass a restriction by editing
    the task file, closing the approval, or switching commands.
 
    Be extra careful when the rule is `self-modify-approval`: that is the executor touching zcode-executor's own data
@@ -239,12 +239,6 @@ zcode-executor approve <id>                      # answer a pending permission r
 zcode-executor deny <id>                         # answer a pending permission request with a denial
 zcode-executor answer <id> <value…>              # answer a pending question: by index/value/label, comma-separated for multiple choice
 ```
-
-- The watch pane shows live progress across sessions (replies, tools, pending, queueing): in Claude Code the user
-  opens it with `/zcode` (it also opens automatically when you send, with a status-bar summary and toasts on key
-  changes); DSH has a 「zcode 任务」 tab in the right sidebar. The pane is view-only — pending is still handled in
-  the conversation per the rules above. Behind it is a read-only `zcode-executor watch --json` you do not need to
-  run yourself.
 
 - A body of `-` reads from stdin; for long text do not fight shell quoting:
 

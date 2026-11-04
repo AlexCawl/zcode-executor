@@ -8,7 +8,7 @@
 
 <p align="center">一个 Claude Code 等多个编码代理都能用的插件：把一件想清楚的开发任务派给本机的 <a href="https://zcode.z.ai">ZCode</a>（GLM）执行，在隔离的 git worktree 里跑，每一次写操作都过机械红线闸，其余一律停下等人来批，最后用 <code>git diff</code> 和测试验收，而不是听执行端的自述。</p>
 
-<p align="center"><img src="https://img.shields.io/badge/version-v0.6.1-5B4CF0" alt="v0.6.1"> <a href="https://www.npmjs.com/package/zcode-executor"><img src="https://img.shields.io/npm/v/zcode-executor?label=npm" alt="npm"></a> <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License"> <img src="https://img.shields.io/badge/node-%3E%3D22-green" alt="Node"> <img src="https://img.shields.io/badge/tests-475%20passing-brightgreen" alt="Tests"></p>
+<p align="center"><img src="https://img.shields.io/badge/version-v0.6.1-5B4CF0" alt="v0.6.1"> <a href="https://www.npmjs.com/package/zcode-executor"><img src="https://img.shields.io/npm/v/zcode-executor?label=npm" alt="npm"></a> <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License"> <img src="https://img.shields.io/badge/node-%3E%3D22-green" alt="Node"> <img src="https://img.shields.io/badge/tests-414%20passing-brightgreen" alt="Tests"></p>
 
 ## 为什么
 
@@ -84,12 +84,6 @@ claude plugin install zcode-executor@zcode-executor --scope user
 ```
 
 插件启用期间 `bin/zcode-executor` 自动进 Bash 的 `PATH`，skill 以 `/zcode-executor:zcode-executor` 出现；说「让 zcode 去做」就会触发。
-
-插件同时带一个 **Claude Code mod**（函数钩子模块，`hooks/`）：输入 `/zcode` 打开[观察面板](#观察面板)，实时看本项目各 zcode 会话的进展；Claude 投递时它也会自动打开，并在状态栏汇总、关键变化时弹提示。不用额外配置；需要支持函数钩子 mod 的 Claude Code 版本（该接口目前为早期预览）。
-
-### DeepSeek Harness（DSH）
-
-npm 包本身就是 DSH 插件：根 `package.json` 带着 `dsh` 定义（`cordis.patch.yml` bundle + 右侧栏客户端），插件代码是 `dsh-plugin/lib/` 的构建产物（源码见 [dsh-plugin/](dsh-plugin/README.md)；产物不入库，CI 在测试与发布前构建）。在 DSH 桌面端的插件页直接按 npm 包名 `zcode-executor` 安装即可——App 会自动登记 bundle，不需要手动 `link:` 或改配置文件。插件会教 DSH 智能体走完整派单流程（skill 幂等软链进 `~/.dsh/skills/`），并把同一个实时观察面板放进官方右侧栏「zcode 任务」标签页，约 1 秒自刷、零额度。本地开发：在 `dsh-plugin/` 里 `pnpm install && npm run build`，再重启桌面端。
 
 ### Codex
 
@@ -217,25 +211,6 @@ zcode-executor 自己就是这么开发出来的：
 
 这样分工，贵的模型只花在判断上，便宜的模型负责敲代码。
 
-## 观察面板
-
-观察面板不再是 Claude Code 专属：Claude Code 插件和 DSH 插件各带一个，数据都来自同一条 `watch --json` 流。
-
-**Claude Code**（终端或桌面版 Code 标签页）：输入 `/zcode` 打开一个面板，实时看当前项目派出去的 zcode 会话干到哪了：
-
-- **待处理**：挂起的审批请求（显示完整命令和原因）、提问、执行进程中断；
-- **执行中**：执行端最新一条消息（按 Markdown 显示）、正在用的工具和参数、最近完成的工具（失败标红）；
-- **已结束**：刚结束 10 分钟内的显示结果和最后一条消息，更早的一行一条。
-
-消息超过两行时默认只显示前两行，按「展开回复」看全文，按「收起」再折起来。
-
-Claude 投递时面板会自动打开；状态栏汇总「N 个回合执行中，M 个挂起」，挂起、回合结束、执行进程中断时弹提示。面板只看不应答，挂起仍由 Claude 问你。
-数据来自 `zcode-executor watch --json`（只读、常驻、不花额度），只显示当前 Claude 会话所在仓库的会话。面板提示找不到 node 时，在插件配置里填 `nodePath`。
-
-**DSH**：上面 `dsh-plugin/` 的安装会把同一个实时视图放进右侧栏「zcode 任务」标签页，约 1 秒自刷、零额度。那边同样只看不答：挂起的请求走派单的智能体，由它按 skill 的应答安全条件分流。
-
-其他代理没有面板，照常只用 skill 和命令行。
-
 ## 命令
 
 | 命令 | 作用 |
@@ -247,7 +222,6 @@ Claude 投递时面板会自动打开；状态栏汇总「N 个回合执行中�
 | `follow <id> [--timeout 秒] [--stream] [--json]` | 跟看后台 runner 直到有结果或挂起 |
 | `status <id> [--tools N] [--json]` | 只读快照：阶段、最近工具（带命令或路径摘要）、队列、挂起、上次结果 |
 | `list [--project 关键字] [--json]` | 登记簿里的会话：阶段、等级、上次结果；`--json` 带所属仓库 |
-| `watch [--json]` | 只读、常驻：会话快照有变化就输出一行，给观察面板用 |
 | `cancel <id>` | 挂起的先拒绝，停掉回合，清空队列 |
 | `approve <id>` / `deny <id>` | 应答挂起的审批请求（放行只有 `allow_once`） |
 | `answer <id> [--] <值…>` | 应答挂起的提问：按序号、value 或 label；多选逗号分隔 |
@@ -279,7 +253,7 @@ Claude 投递时面板会自动打开；状态栏汇总「N 个回合执行中�
 ## 开发
 
 ```bash
-npm test          # 475 个用例对剧本驱动的 mock app-server 跑，外加文档版本号一致性检查；不花 token
+npm test          # 414 个用例对剧本驱动的 mock app-server 跑，外加文档版本号一致性检查；不花 token
 node --check lib/**/*.mjs
 ```
 
@@ -287,7 +261,7 @@ node --check lib/**/*.mjs
 
 纯 `.mjs`，零运行时依赖，无构建。设计文档在 `docs/`：[PRD](docs/PRD.zh-CN.md)、[SPEC](docs/SPEC.zh-CN.md)、[CONTEXT](docs/CONTEXT.zh-CN.md)（术语）、[RULES](docs/RULES.zh-CN.md)（开发规范）、[decisions](docs/decisions.zh-CN.md)、[verified](docs/verified.zh-CN.md)（对真 app-server 实测的事实）。给 agent 看的入口是 [AGENTS.md](AGENTS.md)。
 
-另见 [DSH 插件](docs/dsh-plugin.zh-CN.md)与[协议参考](docs/reference/zcode-app-server-protocol.zh-CN.md)。文档顶部可切换 English、中文和 Русский。
+另见[协议参考](docs/reference/zcode-app-server-protocol.zh-CN.md)。文档顶部可切换 English、中文和 Русский。
 
 ## 常见问题
 

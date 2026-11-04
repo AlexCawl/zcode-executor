@@ -8,7 +8,7 @@
 
 <p align="center">A plugin for Claude Code and other coding agents that hands a well-specified development task to the local <a href="https://zcode.z.ai">ZCode</a> agent (GLM), runs it in an isolated git worktree, guards every write with a hard-rule check plus a model-based review, and lets you verify the result with <code>git diff</code> and tests instead of trusting the agent's own report.</p>
 
-<p align="center"><img src="https://img.shields.io/badge/version-v0.6.1-5B4CF0" alt="v0.6.1"> <a href="https://www.npmjs.com/package/zcode-executor"><img src="https://img.shields.io/npm/v/zcode-executor?label=npm" alt="npm"></a> <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License"> <img src="https://img.shields.io/badge/node-%3E%3D22-green" alt="Node"> <img src="https://img.shields.io/badge/tests-475%20passing-brightgreen" alt="Tests"></p>
+<p align="center"><img src="https://img.shields.io/badge/version-v0.6.1-5B4CF0" alt="v0.6.1"> <a href="https://www.npmjs.com/package/zcode-executor"><img src="https://img.shields.io/npm/v/zcode-executor?label=npm" alt="npm"></a> <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License"> <img src="https://img.shields.io/badge/node-%3E%3D22-green" alt="Node"> <img src="https://img.shields.io/badge/tests-414%20passing-brightgreen" alt="Tests"></p>
 
 ## Why
 
@@ -87,15 +87,9 @@ claude plugin install zcode-executor@zcode-executor --scope user
 
 `bin/zcode-executor` is added to Bash's `PATH` while the plugin is enabled; the skill appears as `/zcode-executor:zcode-executor`. Saying "let zcode do it" triggers it.
 
-The plugin also ships a **Claude Code mod** (a module of function hooks, `hooks/`): type `/zcode` to open the [watch pane](#watch-pane), a live view of this project's zcode sessions. It also opens by itself when Claude sends a task, and adds a status-line summary and toasts. Nothing to configure; it needs a Claude Code version with function-hook mods (the API is in early access).
-
-### DeepSeek Harness (DSH)
-
-The npm package **is** the DSH plugin: the root `package.json` carries the `dsh` definition (`cordis.patch.yml` bundle + right-sidebar client), and the plugin code is the build output under `dsh-plugin/lib/` (sources in [dsh-plugin/](dsh-plugin/README.md); the output itself is not tracked — CI builds it before tests and publish). In the DSH desktop app's plugin page, just install by the npm package name `zcode-executor` — the app registers the bundle by itself; no manual `link:` or config editing. The plugin teaches the DSH agent the full dispatch flow (the skill auto-symlinks into `~/.dsh/skills/`) and adds the **"zcode 任务" tab** to the official right sidebar — the same live watch pane, refreshing about once a second at zero quota. Local development: `pnpm install && npm run build` inside `dsh-plugin/`, then restart the desktop app.
-
 ### Kimi Work
 
-The repo root ships a native `kimi.plugin.json` (skills only; the Claude Code mod above is Claude-only and not included). Register it into the personal market once, then install from the 个人 tab:
+The repo root ships a native `kimi.plugin.json` (skills only). Register it into the personal market once, then install from the 个人 tab:
 
 ```bash
 kimi-daimon kimi-plugin register-personal /path/to/zcode-executor
@@ -229,25 +223,6 @@ This is how zcode-executor itself was built:
 
 The split keeps the expensive model on judgment and the cheap one on typing.
 
-## Watch pane
-
-The pane is not Claude Code-only: the Claude Code plugin and the DSH plugin each ship one, both fed by the same `watch --json` stream.
-
-**Claude Code** (terminal or the desktop Code tab): type `/zcode` to open a live pane showing what this project's zcode sessions are doing:
-
-- **Needs you**: pending permission requests (full command and reason), questions, runners that died;
-- **Running**: the executor's latest message rendered as Markdown, the tool it is running with its arguments, recently finished tools (failures in red);
-- **Finished**: sessions that ended in the last 10 minutes show the outcome and their last message; older ones take one line each.
-
-A message longer than two lines is folded to its first two; press **Expand reply** to read it in full and **Collapse** to fold it again.
-
-The pane opens by itself when Claude sends a task. The status line sums up running turns and pending requests, and a toast pops on a pending request, a finished turn, or a dead runner. The pane is read-only: pending requests still go through Claude.
-It reads `zcode-executor watch --json` (read-only, long-running, no quota) and shows only sessions of the repository the Claude session is in. If the pane says node cannot be found, set `nodePath` in the plugin's settings.
-
-**DSH**: the `dsh-plugin/` install above shows the same live view in the right sidebar's "zcode 任务" tab, refreshing about once a second at zero quota. It is read-only there too — pending requests go to the dispatching agent, which handles them per the skill's answering rules.
-
-Other agents have no pane and keep using the skill and the CLI.
-
 ## Commands
 
 | Command | What it does |
@@ -259,7 +234,6 @@ Other agents have no pane and keep using the skill and the CLI.
 | `follow <id> [--timeout s] [--stream] [--json]` | Follows a background runner until a result or a pending request |
 | `status <id> [--tools N] [--json]` | Read-only snapshot: phase, recent tools (with command or path), queue, pending, last result |
 | `list [--project kw] [--json]` | Registered sessions with phase, tier and last outcome; `--json` adds the owning repository |
-| `watch [--json]` | Read-only, long-running: prints a session snapshot whenever one changes; feeds the watch pane |
 | `cancel <id>` | Denies any pending request, stops the turn, clears the queue |
 | `approve <id>` / `deny <id>` | Answers the pending permission request (allow is `allow_once` only) |
 | `answer <id> [--] <values…>` | Answers the pending question by index, value or label; multi-select comma-separated |
@@ -291,7 +265,7 @@ Exit codes: `0` done · `1` usage / cannot start · `2` refused (whitelist, unkn
 ## Development
 
 ```bash
-npm test          # 475 cases against a scripted mock app-server, plus a doc-version drift check; no tokens spent
+npm test          # 414 cases against a scripted mock app-server, plus a doc-version drift check; no tokens spent
 node --check lib/**/*.mjs
 ```
 
@@ -299,7 +273,7 @@ Releases are tag-driven: `npm version patch` bumps `package.json`, syncs the ver
 
 Pure `.mjs`, zero runtime dependencies, no build step. Design documents live in `docs/`: [PRD](docs/PRD.md), [SPEC](docs/SPEC.md), [CONTEXT](docs/CONTEXT.md) (glossary), [RULES](docs/RULES.md) (coding rules), [decisions](docs/decisions.md), [verified](docs/verified.md) (facts measured against the real app-server). Agent-facing entry point: [AGENTS.md](AGENTS.md).
 
-See also the [DSH plugin](docs/dsh-plugin.md) and [protocol reference](docs/reference/zcode-app-server-protocol.md). Each document links to its English, [Chinese](docs/PRD.zh-CN.md), and [Russian](docs/PRD.ru.md) editions.
+See also the [protocol reference](docs/reference/zcode-app-server-protocol.md). Each document links to its English, [Chinese](docs/PRD.zh-CN.md), and [Russian](docs/PRD.ru.md) editions.
 
 ## FAQ
 

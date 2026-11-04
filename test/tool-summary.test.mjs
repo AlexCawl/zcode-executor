@@ -1,4 +1,4 @@
-// test/tool-summary.test.mjs —— 本回合解析纯函数的用例（SPEC-watch-pane A）。
+// test/tool-summary.test.mjs —— 本回合解析纯函数的用例。
 // 事件剧本就近写在用例里，形状按真机写（verified.md「工具参数位置与 Bash 成败字段」2026-10-02，
 // App 3.14.1）：tool.updated 的 scheduled/started/result/batch，model.streaming 的
 // tool_call / text_delta / reasoning_delta。不碰文件系统，全是内存事件数组。

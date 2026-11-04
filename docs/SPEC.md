@@ -2,7 +2,7 @@
 
 English · [中文](SPEC.zh-CN.md) · [Русский](SPEC.ru.md)
 
-> Status: compiled from [PRD.md](PRD.md) and alignment notes on 2026-09-07; the first implementation was completed on 2026-09-08. The “Optional Jev fast screen” addition of 2026-09-18 is implemented (D16). Specifications for off-peak sends (D20) and the watch pane (D22) are local records; behavior follows PRD section 4. The remaining sections of this file describe the first version's implementation and testing decisions.
+> Status: compiled from [PRD.md](PRD.md) and alignment notes on 2026-09-07; the first implementation was completed on 2026-09-08. The “Optional Jev fast screen” addition of 2026-09-18 is implemented (D16). Specifications for off-peak sends (D20) and the watch pane (D22) were local records; both features are removed in this fork (D22 removed wholesale on 2026-11-05). The remaining sections of this file describe the first version's implementation and testing decisions.
 > Terms follow [CONTEXT.md](CONTEXT.md); decision rationale is in [decisions.md](decisions.md).
 > Development handoff is in `docs/handoff/handoff-20260908.md` (a local record, not committed).
 > This repository has no issue-tracking system integration; this file is the requirements specification. Implementation tasks are still broken down in `docs/PLAN.md` and `docs/tasks/`.
@@ -290,7 +290,7 @@ Jev fast screening:
 
 ### Shell
 
-- CLI subcommands: `doctor、models、list、new、send、follow、status、cancel、approve、deny、answer、quota、watch`; parameters are in PRD section 4.
+- CLI subcommands: `doctor、models、list、new、send、follow、status、cancel、approve、deny、answer`; parameters are in PRD section 4.
 - `doctor` spends no quota and has five steps (PRD section 4): verify `config/provider/zcode-builtin.json` exists beside `zcode.cjs` (the 3.12+ criterion; before 3.12, version ≥ 0.14.8, see decisions D14); report the state of both provider sources separately (D19); perform a real handshake—the model list and tier assignments are still calculated locally from config.json; the handshake only compares `settings.model.available` returned by create and warns about missing models, additionally reporting whether the selected provider has a plaintext apiKey in config.json. A separate local-status line shows the review pipeline (optional Jev pre-screen → ZCode fast screen → slow review), with no network probe of Jev. Step ⑤ checks the off-peak interface and does use the network (D20).
 - Skill name: `zcode-executor`; trigger phrases “让 zcode 去做” (“let zcode do it”) and “派给 zcode” (“dispatch to zcode”). Content follows PRD section 9.
 - Add a line to the task file template reminding users to include `--task` when sending.

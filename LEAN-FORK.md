@@ -16,14 +16,14 @@ reading the `git diff` — not a chain of screening models.
 | `--offpeak` / `--resume` flags, `offpeak.json`, off-peak lines in `status`/`follow`/`cancel`, `readOffPeakAuth` | UX and credentials for the above | — |
 | `review.*`, `environment`, `sensitive` config keys | Model-review configuration (now unknown keys → config warnings; remove them from an existing `config.json`) | — |
 | doctor steps ④ (review pipeline) and ⑤ (off-peak interface) | Diagnostics of the removed subsystems | — |
+| `lib/cli/watch.mjs`, `lib/snapshot.mjs`, `hooks/`, `dsh-plugin/`, `types/`, `cordis.patch.yml`, the `dsh` field / `peerDependencies` / `main`+`exports` wiring, the CI pnpm build | Watch pane (removed 2026-11-05, D22): the `watch --json` NDJSON observer, the Claude Code mod, the DSH desktop plugin and its npm-package wiring | ~470 lines in `lib/` + a TS subtree |
 
-`lib/` went from 10 107 to ~6 550 lines; the test suite from 817 to 475 cases.
+`lib/` went from 10 107 to ~6 550 lines; the test suite from 817 to 475 cases. The watch-pane removal (2026-11-05) took `lib/` to ~6 080 lines and the suite to 414 cases.
 
 ## Kept
 
 - **Start-plan sends** (`send --start-plan`, D19/D21 credentials, `lib/startplan-*.mjs`) — account-based dispatch that runs now, no queueing. `lib/builtins.mjs` (new) holds the builtin-provider-file helpers they used to share with the off-peak modules.
-- **The watch pane** in full: `watch --json`, the Claude Code mod (`hooks/`), the DSH plugin (`dsh-plugin/`), `types/`. The `offpeakQueue` field stays in the snapshot protocol, always `null`, so the panes keep working unchanged.
-- **Every host manifest** (Claude Code, Codex, Copilot, Grok, Antigravity, Gemini, Kimi, DSH) and `scripts/sync-doc-version.mjs`.
+- **Every host manifest** (Claude Code, Codex, Copilot, Grok, Antigravity, Gemini, Kimi) and `scripts/sync-doc-version.mjs`.
 - **Mechanical gate hardening from the security audit (D23)**: kernel-style path resolution, gate self-protection (`self-guard.mjs`), task-file snapshots at dispatch time, secret scrubbing, private file modes.
 
 ## Behavior changes to know

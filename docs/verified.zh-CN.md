@@ -371,19 +371,6 @@ zcode-open-bridge 称此模式不读配置里的模型，要环境变量注入�
   （大小变了的文件不比内容，不触发）。`-c core.fsmonitor=false` 管不到它；经 `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_n` / `GIT_CONFIG_VALUE_n`
   把 `filter.<名字>.process` 置成空串后不再跑（clean、smudge 也随之不被采用）。
 
-## Claude Code mod（2026-10-02，Claude Code 桌面版，引擎 2.1.286）
-
-- 函数钩子插件（mod）的 `$.process.run` / `$.process.spawn` 在桌面版 Code 标签页可用（类型文件标着 "CLI only"）；
-  桌面版进程的 PATH 含 `~/.local/bin`，`/usr/bin/env node` 找得到 node（v22）。
-- `$.command.register({name})` 注册的命令就叫 `/<name>`，不带插件名前缀。
-- 桌面版 `Svg` 开 `isInteractive: true` 时，沙箱框会被宿主不定时刷新，肉眼可见地闪（面板只画过 1 次也闪）；
-  不开时按图片显示，SVG 内的 CSS 关键帧动画照样播放且不闪，面板每 250 毫秒重画一次也不闪。
-- `Text` / `Box` 的颜色写主题键（`warning`、`success`、`error`、`suggestion`、`inactive`）在浅色与深色主题下由引擎各自取色。
-- 引擎的静态检查（`claude plugin validate`）要求接收 `$` 的函数声明在模块顶层，写在 `register` 里的闭包会被拒。
-- 桌面版经 `~/.claude/settings.json` 的 `env` 设 `CLAUDE_CODE_PLUGIN_DIRS`（另加 `CLAUDE_CODE_PLUGIN_DIR_WATCH=1`）后，新开的会话就加载该目录的插件，不必重启 App。
-- 观察面板检查点 B（watch-pane 分支，`watch` + `hooks/`）：用户在桌面版按 W1–W9 试过，报告通过（派单刷新、挂起转交、回合结束提示与卡片、
-  项目过滤、浅色深色、断线重连、终端版）。W5：Claude 执行 `zcode-executor send` 时面板自动打开，宽度正常（桌面版，用户观察）；W10（其他宿主读到只有 `modules` 的 `hooks/hooks.json`）未验证。
-
 ## Claude Code 侧（官方文档核对）
 
 - 插件可同时带 `skills/`、`bin/`（启用期间进 Bash 的 PATH）、`.mcp.json`；

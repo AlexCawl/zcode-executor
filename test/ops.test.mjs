@@ -267,7 +267,7 @@ test('status：--tools 取最近工具调用，上下文占用来自 turn.comple
   assert.equal(out.tools[0].toolName, 'Bash'); // 最近 1 条
   assert.equal(typeof out.totalTokens, 'number');
   const human = runBin(env.env, ['status', env.entry.id]);
-  // 人读的最近工具按调用列出（SPEC-watch-pane B）；这两行没有 toolCallId 也没有参数，只写工具名
+  // 人读的最近工具按调用列出；这两行没有 toolCallId 也没有参数，只写工具名
   assert.match(human.stdout, /最近工具: Write、Bash/); // 不传 --tools 默认 5 次
   assert.match(human.stdout, /上下文: \d+ tokens/);
 });
@@ -828,7 +828,7 @@ test('status 最近工具：batch/result 跳过、toolCallId 反查、路径显�
     { toolName: 'Bash', kind: 'scheduled', file: null, summary: 'ls' }, // batch 行没有 toolCallId，直接跳过
   ]);
   const human = runBin(env.env, ['status', env.entry.id]);
-  // 人读的最近工具按调用去重（SPEC-watch-pane B）：Write 三行是同一次调用，摘要给相对路径
+  // 人读的最近工具按调用去重：Write 三行是同一次调用，摘要给相对路径
   assert.match(human.stdout, /最近工具: Write\(docs\/deep\/x\.md\)、Bash\(ls\)/);
 });
 

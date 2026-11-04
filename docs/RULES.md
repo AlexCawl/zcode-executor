@@ -7,12 +7,11 @@ English · [中文](RULES.zh-CN.md) · [Русский](RULES.ru.md)
 
 ## 1. Language and structure
 
-- Node ≥ 22, ESM, `.mjs` extension. No TypeScript and no build step. Exception: `types/index.d.ts` declares watch-pane mod state solely for `claude plugin validate`; it is not part of runtime execution.
+- Node ≥ 22, ESM, `.mjs` extension. No TypeScript and no build step.
 - Zero runtime dependencies. Before adding a dependency, record a reason in decisions.md. No test framework either: use `node --test`.
 - Place files according to the layer table in AGENTS.md: protocol in `lib/appserver.mjs`, `lib/session.mjs`, `lib/providers.mjs`, `lib/offpeak-provider.mjs`, `lib/scrub.mjs`;
   workflow in `lib/config.mjs`, `lib/credentials.mjs`, `lib/offpeak.mjs`, `lib/offpeak-check.mjs`, `lib/offpeak-send.mjs`, `lib/offpeak-run.mjs`, `lib/registry.mjs`, `lib/tiers.mjs`, `lib/models.mjs`, `lib/runs.mjs`, `lib/queue.mjs`, `lib/run.mjs`, `lib/intent.mjs`, `lib/tool-summary.mjs`, `lib/snapshot.mjs`;
-  gate in `lib/gate.mjs`, `lib/pending.mjs`, `lib/review/`; shell in `bin/`, `lib/cli/`, `skills/`, `templates/`, `hooks/`.
-  `hooks/` is a Claude Code mod running in the engine's own environment, without Node: do not import `lib/`; obtain data only through the `watch` subcommand. Put testable pure functions in `hooks/view.mjs` and test with `node --test` (decisions D22).
+  gate in `lib/gate.mjs`, `lib/pending.mjs`, `lib/review/`; shell in `bin/`, `lib/cli/`, `skills/`, `templates/`.
   Only `lib/errors.mjs` (`ExecutorError`) is shared across layers. Decide a new file's layer before creating it.
 - Dependencies only point downward: shell → workflow → protocol. Workflow invokes the gate, which depends only on the protocol layer. The protocol layer knows nothing of
   `runs/`, the registry, or exit codes. Exception: the shell may use gate-layer **pure functions** (`readPending`, `optionClass`, `questionResponse`) directly,
