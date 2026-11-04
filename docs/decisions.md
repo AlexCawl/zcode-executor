@@ -7,7 +7,7 @@ D10 followed the T0.2 probe; D11 emerged from checkpoint 1; D12 and D13 were dec
 D14 was added on 2026-09-18 when adapting to ZCode App 3.12.2; D15 was added the same day when optional Jev fast screening was agreed; D16 records the Jev pre-screen revision approved in this round, replacing D15's routing and audit design.
 D17, D18, and D19 were added on 2026-09-21 during tracks A/B/C against ZCode's open-source code (3.14.0): D17 moves steering to v4 commands, D18 records the risk of retiring the old protocol surface, and D19 covers the source for account-based Coding Plans.
 D20 was added on 2026-09-27 after a successful end-to-end live run, before implementing off-peak sends, and revises D19's read scope. D21 (start-plan sends) was added on 2026-09-29 and removed in full on 2026-10-02 because of the CAPTCHA gate.
-D22 (implementing the watch pane as a Claude Code mod) was added on 2026-10-02 while building v0.4.0.
+D22 (implementing the watch pane as a Claude Code mod) was added on 2026-10-02 while building v0.4.0 and removed in full on 2026-11-05 in this fork (watch subcommand, `hooks/`, `dsh-plugin/`, `types/`).
 
 ## D1 Positioning: dispatch and acceptance; the protocol is somebody else's job
 
@@ -350,6 +350,8 @@ start-plan (the reopen condition was met), and the old implementation was restor
 
 ## D22 Implement the watch pane as a Claude Code mod; data comes only from the `watch` subcommand
 
+Removed in full on 2026-11-05 (`watch` subcommand, `hooks/`, `dsh-plugin/`, `types/`); the text below is the historical record.
+
 Decision (2026-10-02): add a watch pane to the plugin that works only in Claude Code (`hooks/`, a Claude Code function-hook plugin, commonly called a mod).
 `/zcode` opens it; Claude sends open it automatically. Show live replies, tools, pending requests, and off-peak queues across this project's sessions, with a status-bar summary and pop-up notifications.
 Add a persistent, read-only `watch --json` CLI command that pushes session snapshots; the mod starts a `watch` child process and keeps it until the session ends.
@@ -448,7 +450,7 @@ Change the documentation source from worktree cwd to `repoRoot` (original reposi
   the model. Further progress requires untangling `states` and the builtin active file's semantics. The only benefit is "the session appears under the same account in the App"; keep this noted for now.
 - Support only ZCode App 3.12+, without dual old/new handshake compatibility. Reason: `--version` cannot distinguish them (3.11.2 and 3.12.2 both print
   `0.16.5`); dual handshakes would double mocks and tests; the App auto-updates, and user machines cannot return to old versions.
-- At `new`, record the owning repository in the registry even for non-worktree cwd (D22): currently `repoRoot` is written only for worktrees; otherwise `watch`/`list` query git live and cache the result.
+- At `new`, record the owning repository in the registry even for non-worktree cwd: currently `repoRoot` is written only for worktrees; otherwise `list` queries git live and caches the result.
   This would change the registry format, and old records lack the field; wait until live lookup becomes a bottleneck.
 - Left by D23: `ApplyPatch` path extraction (wait for a live patch-format capture); hard-link boundary crossing; make the host-credential environment-variable list configurable (revisit if someone cannot run without `GITHUB_TOKEN`);
   switch approval probes to plumbing commands that do not compare contents (`diff-files` / `diff-index` / `ls-files`) and handle submodules, fully preventing repository configuration from executing programs through them.

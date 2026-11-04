@@ -282,7 +282,7 @@ test('new：人读输出一行本地 id 开头（D13）', async () => {
   assert.match(run.stdout.trim(), /^new: x_[0-9a-f]{8} \S+\/\S+ 思考 \S+ \S/);
 });
 
-// ---------- repo（所属仓库，SPEC-watch-pane C）----------
+// ---------- repo（所属仓库）----------
 
 // 手写登记簿起环境：list/status 只读登记簿与 runs/，不起 mock、不碰 zcode。
 // 返回的 run() 对同一个 home 跑任意子命令，方便 list 与 status 对照断言

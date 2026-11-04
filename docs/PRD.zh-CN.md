@@ -2,7 +2,7 @@
 
 [English](PRD.md) · 中文 · [Русский](PRD.ru.md)
 
-> 状态：第一版已实现（2026-09-08）；闲时投递与 `quota` 随 v0.3.5 发布（2026-10-02，D20），观察面板随 v0.4.0（D22）；模型审批部分已按批准的 Jev 修订路线（`docs/jev-hardening-plan.md`，本地记录，不进仓库） 更新为目标合同，实施与验证进度以对应记录为准。需求于 2026-09-07 对齐（31 个问题一轮轮问完）。
+> 状态：第一版已实现（2026-09-08）；闲时投递与 `quota` 随 v0.3.5 发布（2026-10-02，D20），观察面板随 v0.4.0（D22；2026-11-05 已整体移除）。模型审批部分已按批准的 Jev 修订路线（`docs/jev-hardening-plan.md`，本地记录，不进仓库） 更新为目标合同，实施与验证进度以对应记录为准。需求于 2026-09-07 对齐（31 个问题一轮轮问完）。
 > 术语以 [CONTEXT.md](CONTEXT.zh-CN.md) 为准；为什么这么定见 [decisions.md](decisions.zh-CN.md)；
 > 本机实测事实见 [verified.md](verified.zh-CN.md)；接手开发见 `docs/handoff/handoff-20260908.md`（本地记录，不进仓库）。
 
@@ -25,7 +25,7 @@ Claude Code 负责想清楚一件开发任务，本机 ZCode（GLM）负责把�
 | 协议 | `lib/appserver.mjs` `lib/session.mjs` `lib/providers.mjs` `lib/offpeak-provider.mjs` `lib/scrub.mjs` | 拉起 `zcode app-server --stdio`，JSON-RPC 配对、反向请求路由、会话生命周期、回合结束判定、provider 表与脱敏 |
 | 工作流 | `lib/config.mjs` `lib/credentials.mjs` `lib/registry.mjs` `lib/tiers.mjs` `lib/models.mjs` `lib/runs.mjs` `lib/queue.mjs` `lib/run.mjs` `lib/intent.mjs` `lib/offpeak.mjs` `lib/offpeak-check.mjs` `lib/offpeak-send.mjs` `lib/offpeak-run.mjs` `lib/tool-summary.mjs` `lib/snapshot.mjs` | 配置、凭据、登记簿、等级分配、队列与锁、runner 的一生、`runs/<id>/` 落盘、白名单、模型审批的素材、闲时投递、本回合解析与会话快照 |
 | 闸门 | `lib/gate.mjs` `lib/pending.mjs` `lib/review/` | 红线 → 模型审批 → 挂起 |
-| 外壳 | `bin/zcode-executor` `lib/cli/` `skills/zcode-executor/` `templates/task.md` `hooks/` `types/` | CLI、skill、任务单模板；观察面板 mod 与它的状态类型声明（只在 Claude Code 里生效，D22） |
+| 外壳 | `bin/zcode-executor` `lib/cli/` `skills/zcode-executor/` `templates/task.md` | CLI、skill、任务单模板 |
 
 **技术栈**：Node ≥ 22、ESM、纯 `.mjs`、零运行时依赖、无构建步骤、`node --test`。
 审批层的 TypeScript 原型手工去掉类型改成 `.mjs`。
@@ -67,7 +67,6 @@ Claude Code 负责想清楚一件开发任务，本机 ZCode（GLM）负责把�
 | `send <id> --offpeak --resume [--wait] [--stream] [--json]` | 回合 exited 或 runner 崩了之后，只重新拉起 runner 接着跑队列里那次闲时投递，不入队、不取号 |
 | `follow <id> [--timeout 秒] [--stream] [--json]` | 跟看后台 runner，写出新结果就返回 |
 | `status <id> [--tools N] [--json]` | 只读快照：phase（`running` 在跑 / `idle` 队列空 / `pending` 挂起 / `exited` 正常收工 / `stale` runner 半路没了）、最近工具调用、队列长度、上次结果、挂起了多久；`--json` 带所属仓库 `repo`，`tools[]` 每项带参数摘要 `summary` |
-| `watch [--json]` | 只读、常驻：盯所有会话，某条有变化就输出它的完整快照（阶段、回复末尾几行、当前工具、最近工具、挂起内容、闲时排队、所属仓库），同一会话最多每 300 毫秒一次；读的一方断开或父进程没了就退出。给观察面板用（decisions D22），不花额度 |
 | `cancel <id>` | 叫停：挂起的先答拒绝，再 `session/stop`，之后不再取队列 |
 | `approve <id>` | 应答当前挂起的审批请求，只回 `allow_once` |
 | `deny <id>` | 应答当前挂起的审批请求为拒绝 |
@@ -90,7 +89,6 @@ Claude Code 负责想清楚一件开发任务，本机 ZCode（GLM）负责把�
 - `status` 的最近工具一次调用一项，带参数摘要：`Bash(npm test)`、`Edit(src/a.mjs)`，没有摘要的写工具名；`list` 的挂起行末尾标「挂起: 工具名」。
 - 一条会话同一时刻最多一个挂起（审批在回合内串行）。`approve` / `deny` / `answer` 应答的就是那一个。
 - `--thought` 的值在建会话前对着该模型的合法档位校验，不合法退出码 2（`session/create` 遇到非法值会静默忽略，不能靠它报错）。
-- `watch --json` 每行一个对象：开头 `{type:'hello', repo}`（启动目录的所属仓库），之后 `{type:'session', session}`；首轮全部输出完是 `{type:'synced'}`，会话从登记簿消失是 `{type:'removed', id}`。快照字段与 `status --json` 不同名的才是新含义（`activeTool`、`recentTools`、`pendingDetail`、`offpeakQueue`、`reply`、`since`、`lastEndedAt`、`lastEndOutcome`、`replyMarkdown`）。
 - 正文写 `-` 从 stdin 读。`--json` 给机器可读结构。
 - 输出（stdout、stderr、`runner.log`）里的终端控制字符——C0（换行、制表除外）、DEL、C1、双向排版控制符——一律换成字面的 `\uXXXX`：
   工具名、理由、提问、模型回复、文件名都是执行端可控的文本，原样上屏能清屏、改写人正在看的挂起行。`--json` 的含义不变（转义落在 JSON 字符串里，解析回来还是原字符）。

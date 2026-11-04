@@ -33,7 +33,7 @@ test('plugin.yaml 的 version: 行等于 package.json 的版本', () => {
 });
 
 test('package.json 的 files 覆盖每一个新增的适配文件或其所在目录', () => {
-  for (const entry of ['gemini-extension.json', '.grok-plugin', '.antigravity-plugin', '.github/plugin', 'plugin.yaml', '__init__.py', 'hooks', 'types']) {
+  for (const entry of ['gemini-extension.json', '.grok-plugin', '.antigravity-plugin', '.github/plugin', 'plugin.yaml', '__init__.py']) {
     assert.ok(pkg.files.includes(entry), `files 数组应包含 ${entry}，不加就发不进 npm 包`);
   }
   assert.deepEqual(pkg.pi, { skills: ['./skills'] });
@@ -73,13 +73,4 @@ test('两份 README 都有七家代理的安装小节和 skill 链接命令', ()
       assert.ok(text.includes(snippet), `${readme} 应包含 ${snippet}`);
     }
   }
-});
-
-test('观察面板 mod 的清单：hooks.json 指向 register.mjs，plugin.json 带 types 与 nodePath 配置（decisions D22）', () => {
-  const hooks = JSON.parse(read('hooks/hooks.json'));
-  assert.deepEqual(hooks, { modules: ['./register.mjs'] });
-  const base = JSON.parse(read('.claude-plugin/plugin.json'));
-  assert.equal(base.types, './types/index.d.ts');
-  assert.equal(base.userConfig?.nodePath?.type, 'string');
-  assert.match(read('types/index.d.ts'), /'zcode-executor': \{ panel: ZcodeExecutorPanel; frame: number; expanded: Record<string, boolean> \}/);
 });

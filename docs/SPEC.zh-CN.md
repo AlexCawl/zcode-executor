@@ -2,7 +2,7 @@
 
 [English](SPEC.md) · 中文 · [Русский](SPEC.ru.md)
 
-> 状态：2026-09-07 由 [PRD.md](PRD.zh-CN.md) 和对齐记录综合而成，2026-09-08 第一版实现完成；2026-09-18 的「Jev 可选快筛」已实现（D16）。闲时投递（D20）与观察面板（D22）的规格是本地记录，行为以 PRD 第 4 节为准；本文件其余章节描述第一版的实现与测试决定。
+> 状态：2026-09-07 由 [PRD.md](PRD.zh-CN.md) 和对齐记录综合而成，2026-09-08 第一版实现完成；2026-09-18 的「Jev 可选快筛」已实现（D16）。闲时投递（D20）与观察面板（D22）的规格曾是本地记录；两个特性都已在本 fork 移除（D22 于 2026-11-05 整体移除）。本文件其余章节描述第一版的实现与测试决定。
 > 术语按 [CONTEXT.md](CONTEXT.zh-CN.md)；决策理由在 [decisions.md](decisions.zh-CN.md)；
 > 接手开发在 `docs/handoff/handoff-20260908.md`（本地记录，不进仓库）。
 > 本仓库没有接工单系统，这份文件就是需求规格；实现任务仍拆到 `docs/PLAN.md` 与 `docs/tasks/`。
@@ -284,7 +284,7 @@ Jev 快筛：
 
 ### 外壳
 
-- CLI 子命令：`doctor、models、list、new、send、follow、status、cancel、approve、deny、answer、quota、watch`，参数见 PRD 第 4 节。
+- CLI 子命令：`doctor、models、list、new、send、follow、status、cancel、approve、deny、answer`，参数见 PRD 第 4 节。
 - `doctor` 不花额度，共五步（PRD 第 4 节）：`zcode.cjs` 旁边找得到 `config/provider/zcode-builtin.json`（3.12+ 判据，3.12 前是版本 ≥ 0.14.8，见 decisions D14）；provider 两个来源各报状态（D19）；真握手一次——模型清单与等级分配仍是从 config.json 本地算，握手只是把 create 返回的 `settings.model.available` 拿来比对，缺的进警告，并多报一句选中 provider 在 config.json 里有没有明文 apiKey。另有一行本地状态显示审批 pipeline（可选 Jev 前筛 → ZCode 快筛 → 慢判）；不联网探测 Jev。第 ⑤ 步自检闲时接口，会联网（D20）。
 - skill 名 `zcode-executor`，触发词「让 zcode 去做」「派给 zcode」。内容按 PRD 第 9 节。
 - 任务单模板加一行提醒投递时带 `--task`。

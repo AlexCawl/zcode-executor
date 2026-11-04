@@ -24,7 +24,7 @@ _Avoid_: prompt, message
 
 **Task snapshot**:
 The task file's contents when a send enters the queue, stored in the data directory (`runs/<id>/tasks/`). Model review reads intent only from this snapshot, never from the original in the worktree, which the executor can edit.
-_Avoid_: task backup, cache (a session snapshot is the session state pushed by `watch`, a different concept)
+_Avoid_: task backup, cache
 
 **Send**:
 Sending one message to a session to trigger a turn. The message is only a doorbell; the content is in the task file.
@@ -139,11 +139,6 @@ This project reads it without writing, decrypts only four keys (active provider,
 _Avoid_: key store, keychain
 
 ### Observation
-
-**Watch pane**:
-A pane in Claude Code displaying live progress across this project's sessions: executor replies, active tools, pending contents, and off-peak queue progress.
-Open it with `/zcode`; it also opens automatically when Claude sends. It is view-only: pending requests are still relayed to a human by Claude, not answered in the pane.
-_Avoid_: monitoring panel, dashboard
 
 **Repo**:
 The main repository root corresponding to a session's worktree, determined through git's shared data directory, not guessed from the directory name. Empty if the worktree was deleted or cannot be resolved.

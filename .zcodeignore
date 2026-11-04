@@ -11,11 +11,6 @@ docs/archive/
 docs/SPEC-offpeak.md
 docs/jev-*-plan.md
 docs/research/
-docs/SPEC-watch-pane.md
-docs/SPEC-dsh-adapter.md
-
-# Claude Code 按目录加载本插件（--plugin-dir / CLAUDE_CODE_PLUGIN_DIRS）时引擎写的类型配置
-/tsconfig.json
 
 # ===== ↑ 以上同步自 .gitignore（「从 .gitignore 同步」只重写以上部分）=====
 .git/

@@ -7,12 +7,11 @@
 
 ## 1. Язык и структура
 
-- Node ≥ 22, ESM, расширение `.mjs`. Без TypeScript и этапа сборки. Исключение: `types/index.d.ts` описывает типы состояния модуля панели наблюдения только для `claude plugin validate` и не участвует в выполнении.
+- Node ≥ 22, ESM, расширение `.mjs`. Без TypeScript и этапа сборки.
 - Ноль зависимостей времени выполнения. Перед добавлением зависимости запишите обоснование в decisions.md. Тестовые фреймворки тоже не добавляются: используйте `node --test`.
 - Размещайте файлы по таблице слоёв AGENTS.md: протокол — `lib/appserver.mjs`, `lib/session.mjs`, `lib/providers.mjs`, `lib/offpeak-provider.mjs`, `lib/scrub.mjs`;
   рабочий процесс — `lib/config.mjs`, `lib/credentials.mjs`, `lib/offpeak.mjs`, `lib/offpeak-check.mjs`, `lib/offpeak-send.mjs`, `lib/offpeak-run.mjs`, `lib/registry.mjs`, `lib/tiers.mjs`, `lib/models.mjs`, `lib/runs.mjs`, `lib/queue.mjs`, `lib/run.mjs`, `lib/intent.mjs`, `lib/tool-summary.mjs`, `lib/snapshot.mjs`;
-  шлюз — `lib/gate.mjs`, `lib/pending.mjs`, `lib/review/`; оболочка — `bin/`, `lib/cli/`, `skills/`, `templates/`, `hooks/`.
-  `hooks/` — модуль Claude Code в собственном окружении движка, без Node: не импортирует `lib/`, получает данные только из подкоманды `watch`. Проверяемые чистые функции размещаются в `hooks/view.mjs` и тестируются через `node --test` (decisions D22).
+  шлюз — `lib/gate.mjs`, `lib/pending.mjs`, `lib/review/`; оболочка — `bin/`, `lib/cli/`, `skills/`, `templates/`.
   Между слоями общий только `lib/errors.mjs` (`ExecutorError`). Перед созданием файла определите его слой.
 - Зависимости направлены только вниз: оболочка → рабочий процесс → протокол. Рабочий процесс вызывает шлюз, а шлюз зависит только от протокола. Слой протокола не знает о
   `runs/`, реестре и кодах завершения. Исключение: оболочка может напрямую использовать **чистые функции** шлюза (`readPending`, `optionClass`, `questionResponse`),

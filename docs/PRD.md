@@ -2,7 +2,7 @@
 
 English · [中文](PRD.zh-CN.md) · [Русский](PRD.ru.md)
 
-> Status: the first version is implemented (2026-09-08); off-peak sends and `quota` shipped in v0.3.5 (2026-10-02, D20), and the watch pane in v0.4.0 (D22). The model-review section has been updated to the target contract following the approved Jev revision plan (`docs/jev-hardening-plan.md`, a local record not committed to the repository); consult the corresponding records for implementation and validation progress. Requirements were aligned on 2026-09-07 (31 questions, resolved over successive rounds).
+> Status: the first version is implemented (2026-09-08); off-peak sends and `quota` shipped in v0.3.5 (2026-10-02, D20), and the watch pane in v0.4.0 (D22; removed wholesale on 2026-11-05). The model-review section has been updated to the target contract following the approved Jev revision plan (`docs/jev-hardening-plan.md`, a local record not committed to the repository); consult the corresponding records for implementation and validation progress. Requirements were aligned on 2026-09-07 (31 questions, resolved over successive rounds).
 > Terms follow [CONTEXT.md](CONTEXT.md); see [decisions.md](decisions.md) for the reasoning;
 > locally verified facts are in [verified.md](verified.md); for taking over development, see `docs/handoff/handoff-20260908.md` (a local record not committed to the repository).
 
@@ -25,7 +25,7 @@ A Claude Code plugin (the skill and CLI are also available to other coding agent
 | Protocol | `lib/appserver.mjs` `lib/session.mjs` `lib/providers.mjs` `lib/offpeak-provider.mjs` `lib/scrub.mjs` | Start `zcode app-server --stdio`; pair JSON-RPC messages, route reverse requests, manage session lifecycle, detect turn completion, manage the provider table, and redact secrets |
 | Workflow | `lib/config.mjs` `lib/credentials.mjs` `lib/registry.mjs` `lib/tiers.mjs` `lib/models.mjs` `lib/runs.mjs` `lib/queue.mjs` `lib/run.mjs` `lib/intent.mjs` `lib/offpeak.mjs` `lib/offpeak-check.mjs` `lib/offpeak-send.mjs` `lib/offpeak-run.mjs` `lib/tool-summary.mjs` `lib/snapshot.mjs` | Configuration, credentials, registry, tier assignment, queue and locks, runner lifecycle, persistence in `runs/<id>/`, allowlist, model-review inputs, off-peak sends, current-turn parsing, and session snapshots |
 | Gate | `lib/gate.mjs` `lib/pending.mjs` `lib/review/` | Hard rules → model review → pending |
-| Shell | `bin/zcode-executor` `lib/cli/` `skills/zcode-executor/` `templates/task.md` `hooks/` `types/` | CLI, skill, task-file template; watch-pane mod and its state type declarations (effective only in Claude Code, D22) |
+| Shell | `bin/zcode-executor` `lib/cli/` `skills/zcode-executor/` `templates/task.md` | CLI, skill, task-file template |
 
 **Stack**: Node ≥ 22, ESM, plain `.mjs`, zero runtime dependencies, no build step, `node --test`.
 The review layer's TypeScript prototype is converted manually to `.mjs` by removing types.
@@ -71,7 +71,6 @@ The original command metavariables are retained: `关键字` = keyword, `绝对�
 | `send <id> --offpeak --resume [--wait] [--stream] [--json]` | After a turn exits or the runner crashes, restart only the runner to continue the off-peak send already in the queue; do not enqueue again or obtain a ticket |
 | `follow <id> [--timeout 秒] [--stream] [--json]` | Observe the background runner; return when it writes a new result |
 | `status <id> [--tools N] [--json]` | Read-only snapshot: phase (`running` executing / `idle` queue empty / `pending` waiting for a response / `exited` normal shutdown / `stale` runner disappeared mid-flight), recent tool calls, queue length, last result, and pending duration; `--json` includes the owning repository `repo`, and each `tools[]` entry includes an argument `summary` |
-| `watch [--json]` | Read-only, persistent: watch all sessions and emit the complete snapshot of any changed session (phase, final reply lines, active tool, recent tools, pending contents, off-peak queue, owning repository), at most once per session per 300 milliseconds; exit if the reader disconnects or the parent process disappears. Used by the watch pane (decisions D22), with no quota usage |
 | `cancel <id>` | Stop: deny any pending request first, then `session/stop`; stop consuming the queue afterwards |
 | `approve <id>` | Answer the current pending permission request with `allow_once` only |
 | `deny <id>` | Deny the current pending permission request |
@@ -94,7 +93,6 @@ Exit codes:
 - `status` lists one entry per recent tool call, including an argument summary: `Bash(npm test)`, `Edit(src/a.mjs)`, or just the tool name if no summary is available; pending rows in `list` end with “挂起: 工具名” (pending: tool name).
 - A session has at most one pending request at a time (permission requests are sequential within a turn). `approve` / `deny` / `answer` respond to that request.
 - Validate `--thought` against the model's legal levels before creating the session; an invalid value returns exit code 2 (`session/create` silently ignores invalid values, so it cannot provide validation errors).
-- `watch --json` emits one object per line: first `{type:'hello', repo}` (the owning repository of the startup directory), then `{type:'session', session}`; after the initial full set, `{type:'synced'}`; when a session disappears from the registry, `{type:'removed', id}`. Snapshot fields have new meanings only where their names differ from `status --json` (`activeTool`, `recentTools`, `pendingDetail`, `offpeakQueue`, `reply`, `since`, `lastEndedAt`, `lastEndOutcome`, `replyMarkdown`).
 - Use `-` as the message body to read from stdin. `--json` supplies machine-readable structures.
 - In output (stdout, stderr, `runner.log`), replace terminal control characters—C0 (except newline and tab), DEL, C1, and bidirectional-formatting controls—with literal `\uXXXX`:
   tool names, reasons, questions, model replies, and filenames are executor-controlled text; displaying it unchanged could clear the screen or overwrite the pending line being read. `--json` retains its meaning (escaping occurs inside JSON strings, and parsing restores the original characters).
