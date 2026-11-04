@@ -1,425 +1,427 @@
-# 本机实测（2026-09-07）
+# Local verification (2026-09-07)
 
-写的是当时的情况。文件、版本、命令用之前先确认还在。
+English · [中文](verified.zh-CN.md) · [Русский](verified.ru.md)
 
-## 3.16.3 核对（2026-10-26，App 3.16.3 / CLI 0.17.0，零 token）
+These records describe the situation at the time. Check that files, versions, and commands still exist before using them.
 
-- 升级核对，不需要改代码。`doctor` 五步全过（选中账号型团队版 key）。`scripts/probe.mjs` 未跑（协议面无差异）。
-- 源码核对 zcode.cjs：依赖的方法全在——`session/create|send|subscribe|stop|close|list|resume|fork|setMode`、`workspace/generateText|cancelGenerateText`、`v4/command|commands/query`、`interaction/requestPermission|requestUserInput|requestProviderRuntimeHeaders`；`turn.completed` 与 `resultType` 枚举（success/cancelled/error_max_turns/error_max_budget/error_during_execution/error_max_tool_calls）一字未变。线 D（v4 迁移）触发条件未出现。
-- 新增的全是 v4 扩展（`v4/attachment/*`、`v4/conversation/subscribe|resync|usage`、`v4/offPeak/lifecycle`、`workspace/hooks/trustGrant`、`session/compact|messages|read|goal|subagents|usage` 等），旧接口没删。`v4/conversation/subscribe` 出现——线 D 备料更全。
-- 花额度回合未跑；完整闲时投递未在新版重跑，`OFFPEAK_VERIFIED_APP` 保持 3.14.1。
+## 3.16.3 check (2026-10-26, App 3.16.3 / CLI 0.17.0, zero tokens)
 
-## 3.15.3 核对（2026-10-14，App 3.15.3 / CLI 0.16.9，零 token）
+- Upgrade check; no code changes needed. All five `doctor` steps passed (account-based team key selected). `scripts/probe.mjs` was not run (no protocol-surface differences).
+- Checked zcode.cjs source: every required method remains—`session/create|send|subscribe|stop|close|list|resume|fork|setMode`, `workspace/generateText|cancelGenerateText`, `v4/command|commands/query`, `interaction/requestPermission|requestUserInput|requestProviderRuntimeHeaders`; `turn.completed` and the `resultType` enum (success/cancelled/error_max_turns/error_max_budget/error_during_execution/error_max_tool_calls) are unchanged character for character. Track D's trigger (v4 migration) has not appeared.
+- All additions are v4 extensions (`v4/attachment/*`, `v4/conversation/subscribe|resync|usage`, `v4/offPeak/lifecycle`, `workspace/hooks/trustGrant`, `session/compact|messages|read|goal|subagents|usage`, etc.); old APIs remain. `v4/conversation/subscribe` has appeared—more groundwork is available for track D.
+- No quota-consuming turn was run; a complete off-peak send was not rerun on the new version. `OFFPEAK_VERIFIED_APP` remains 3.14.1.
 
-- 升级核对，不需要改代码。`doctor` 五步全过（选中账号型个人版）；`scripts/probe.mjs` 全绿（握手、create/subscribe/list/resume/close，与 3.14.5 结果一致）。`npm test` 803/803。
-- 源码核对 zcode.cjs：`session/*`、`v4/command`、`workspace/generateText|cancelGenerateText`、`provider/updateAccountConfig`、`interaction/request*`、`modelSelection`/`selectionScope`/`requestedDelivery`、`zcodejwttoken` 全在；start plan 端点 `zcode.z.ai/api/v1/zcode-plan/anthropic` 与 GLM-5.3/5.3-Flash 模型在。内置 provider 文件十种账号 provider 全保留。
-- 花额度回合未跑（协议面与 3.14.5 无差异，风险低）；完整闲时投递仍未在新版重跑，`OFFPEAK_VERIFIED_APP` 保持 3.14.1。
+## 3.15.3 check (2026-10-14, App 3.15.3 / CLI 0.16.9, zero tokens)
 
-## start plan 投递重开真机（2026-10-09，App 3.14.5，拣回 e26fedb 实现后）
+- Upgrade check; no code changes needed. All five `doctor` steps passed (account-based personal plan selected); every `scripts/probe.mjs` check passed (handshake, create/subscribe/list/resume/close, matching 3.14.5). `npm test` 803/803.
+- Checked zcode.cjs source: `session/*`, `v4/command`, `workspace/generateText|cancelGenerateText`, `provider/updateAccountConfig`, `interaction/request*`, `modelSelection`/`selectionScope`/`requestedDelivery`, and `zcodejwttoken` remain; the start-plan endpoint `zcode.z.ai/api/v1/zcode-plan/anthropic` and GLM-5.3/5.3-Flash models remain. All ten account-provider kinds remain in the builtin provider file.
+- No quota-consuming turn was run (protocol surface unchanged from 3.14.5, low risk); a complete off-peak send still has not been rerun on the new version. `OFFPEAK_VERIFIED_APP` remains 3.14.1.
 
-- 协议面零成本核对：`provider/updateAccountConfig`、send 的 `modelSelection`/`modelExecution.selectionScope`、内置文件 start-plan 条目（模型 GLM-5.3-Flash/5.2/5-Turbo，端点 zcode.z.ai/api/v1/zcode-plan/anthropic）在 3.14.5 全部在。`npm test` 755/755。
-- 花额度一条：`send x_* "写 sp.txt" --start-plan --wait`。请求确实经 `account:bigmodel-start-plan` 到达 zcode-plan 端点，**没有再出现 2026-09-29 的 `captcha verify failed`**——人机验证已撤，JWT 鉴权通过；服务器回业务错误 1005 `exceed quota limit`（Start Plan 订阅额度用尽），回合按退出码 4 failed 收尾，事件与错误归因干净。通道适配成立，待额度恢复后补一条成功回合。
+## Start-plan sends re-enabled: live check (2026-10-09, App 3.14.5, after restoring implementation e26fedb)
 
-## 3.14.5 冒烟（2026-10-09，App 3.14.5 / CLI 0.16.9）
+- Zero-cost protocol-surface check: `provider/updateAccountConfig`, send's `modelSelection`/`modelExecution.selectionScope`, and the builtin start-plan entry (models GLM-5.3-Flash/5.2/5-Turbo, endpoint zcode.z.ai/api/v1/zcode-plan/anthropic) are all present in 3.14.5. `npm test` 755/755.
+- One quota-consuming send: `send x_* "写 sp.txt" --start-plan --wait` (`写 sp.txt` means “write sp.txt”). The request reached the zcode-plan endpoint through `account:bigmodel-start-plan`, and **the 2026-09-29 `captcha verify failed` did not recur**—captcha verification has been removed and JWT authentication passed. The server returned business error 1005 `exceed quota limit` (Start Plan subscription quota exhausted); the turn ended failed with exit code 4, with clean event records and error attribution. Channel adaptation is established; add a successful turn when quota is restored.
 
-- 升级核对，不需要改代码。`doctor` 五步全过；`scripts/probe.mjs` 全绿（旧方法握手、create/subscribe/list/resume/close）。
-- 源码核对 zcode.cjs：我们用的方法与反向请求全部还在——`session/create|send|subscribe|close|list|stop`、`v4/command`、`interaction/requestPermission|requestUserInput|requestProviderRuntimeHeaders`、`workspace/generateText`；新方法（`session/goal|fork|compact|usage` 等）均为增量。`~/.zcode/v2/config.json` 仍是 `provider` 表 + 明文 apiKey。
-- 花额度一条短回合：`real-send --yes --on-permission allow` 写 hi.txt，create（flash/high）→ Write 触发 `interaction/requestPermission` → 放行 → `turn` 13 秒结算 done，usage `{input 67365 / output 157 / cacheRead 33536}`，无错误码。
-- 闲时：`quota` 零额度路径正常（`canTakeNumber:true`，今日 0/3）。完整闲时投递未在 3.14.5 重跑（需闲时窗口），`OFFPEAK_VERIFIED_APP` 仍记 3.14.1，doctor 的提示行保持。
+## 3.14.5 smoke test (2026-10-09, App 3.14.5 / CLI 0.16.9)
 
-## 3.14.1 冒烟（2026-09-22，App 3.14.1 / CLI 0.16.9，插件 0.3.1，花额度两条短回合）
+- Upgrade check; no code changes needed. All five `doctor` steps passed; every `scripts/probe.mjs` check passed (old-method handshake, create/subscribe/list/resume/close).
+- Checked zcode.cjs source: all methods and reverse requests we use remain—`session/create|send|subscribe|close|list|stop`, `v4/command`, `interaction/requestPermission|requestUserInput|requestProviderRuntimeHeaders`, `workspace/generateText`; new methods (`session/goal|fork|compact|usage`, etc.) are additive. `~/.zcode/v2/config.json` remains a `provider` table with plaintext apiKey.
+- One short quota-consuming turn: `real-send --yes --on-permission allow` wrote hi.txt; create (flash/high) → Write triggered `interaction/requestPermission` → allow → `turn` settled as done after 13 seconds, usage `{input 67365 / output 157 / cacheRead 33536}`, no error code.
+- Off-peak: `quota` zero-quota path worked (`canTakeNumber:true`, today 0/3). A full off-peak send was not rerun on 3.14.5 (requires an off-peak window); `OFFPEAK_VERIFIED_APP` still records 3.14.1, and doctor's notice remains.
 
-- 零 token：`doctor` 四步全过（选中账号型个人版）；`scripts/probe.mjs` 与 v4 探针的每一步结果和 3.12.2 完全一致（旧方法握手、`v4/command` 的 ACK 形状、无 id 的 stop 被忽略）。v4 `stop` 的 ACK 多了一个 `memoryEnabled:false` 字段，忽略即可。
-- 插件全链路：`new`（provider 自动选 `account:bigmodel-individual-coding-plan`）→ `send`（后台 runner）→ 回合中 `send --steer` → `follow`。插话 ACK `delivery:"queue"`，事件 `turn.steerQueued` → `steerDrained`，c.txt 按插话内容写出；三次 Write 快筛放行；`state.steerUnavailable` 为 null。
-- cancel：第二回合跑到第一个 Write 时 `cancel`，一秒内 `turn.completed resultType:"cancelled"`，`last.outcome` cancelled、退出码 4，六个文件一个没写，runner 退出、锁删除；事件与 runner.log 无 `enc:v1`，临时 provider 目录无残留，无孤儿 app-server。
-- 发现并修一处显示问题：结束摘要的「改动」少列了 a.txt——Read 也省略 input 但没有审批事件，兜底逻辑让它借走了第一条 Write 的审批输入。改成只借同名工具（`lib/cli/common.mjs`）。
+## 3.14.1 smoke test (2026-09-22, App 3.14.1 / CLI 0.16.9, plugin 0.3.1, two short quota-consuming turns)
 
-## 检查点 6c：账号型 Coding Plan 真机（2026-09-21，App 3.12.2，花额度一条短回合）
+- Zero tokens: all four `doctor` steps passed (account-based personal plan selected); every result from `scripts/probe.mjs` and the v4 probe matched 3.12.2 exactly (old-method handshake, `v4/command` ACK shape, id-less stop ignored). The v4 `stop` ACK added `memoryEnabled:false`, which can be ignored.
+- Full plugin path: `new` (automatically selected provider `account:bigmodel-individual-coding-plan`) → `send` (background runner) → `send --steer` during the turn → `follow`. Interjection ACK `delivery:"queue"`, events `turn.steerQueued` → `steerDrained`; c.txt was written according to the interjection. Three Write requests passed fast screening; `state.steerUnavailable` was null.
+- cancel: during the second turn, `cancel` at the first Write produced `turn.completed resultType:"cancelled"` within one second; `last.outcome` cancelled, exit code 4, none of six files written, runner exited and lock deleted. Events and runner.log contained no `enc:v1`, no temporary provider directory remained, and no app-server was orphaned.
+- Found and fixed a display issue: the final “改动” (changes) summary omitted a.txt—Read also omitted input but had no permission event, so fallback logic borrowed the first Write's approval input. Changed it to borrow only from the same tool name (`lib/cli/common.mjs`).
 
-- `doctor`：② 账号型 coding plan 已登录（bigmodel，个人版 key 在、团队版 key 在）；config.json 3 个可用 provider（备用来源）；选中 `account:bigmodel-individual-coding-plan`（apiKey 在）；③ 握手成功，fast=GLM-5.3-Flash、strong=GLM-5.3。`--json` 的 `config.sources.account` = `{ok:true, providerCount:2, family:"bigmodel", plans:["individual","team"]}`。
-- `models`：账号型两条 provider 列在最前，思考档位 low/high/max（从内置文件 `modelRules` 的 `reasoningLevel.values` 算出，与 legacy 来源的 low/max/high 同集合、顺序不同）。
-- `scripts/real-send.mjs`（provider 按优先级自动选中账号型个人版）：create `providerId:"zcode-executor"`（个人文件）、GLM-5.3-Flash；一次 Write 审批放行，回合 15 秒 `done`，文件内容正确。事件文件里没有 `enc:v1` 与「32 位.16 位」形态的字符串；`os.tmpdir()` 下没有残留 `zcode-executor-provider-*` 目录。
-- 团队版那把 key 只验到「解得开、能进 provider 表」，没有真机投递过（默认选个人版；要用团队版在插件配置里写 `preferredProvider`）。
+## Checkpoint 6c: live account-based Coding Plan (2026-09-21, App 3.12.2, one short quota-consuming turn)
 
-## 检查点 6b：插话与叫停真机（2026-09-21，App 3.12.2，花额度两条短回合）
+- `doctor`: ② account-based coding plan signed in (bigmodel, personal key present, team key present); 3 usable providers in config.json (fallback source); selected `account:bigmodel-individual-coding-plan` (apiKey present); ③ handshake succeeded, fast=GLM-5.3-Flash, strong=GLM-5.3. `--json` field `config.sources.account` = `{ok:true, providerCount:2, family:"bigmodel", plans:["individual","team"]}`.
+- `models`: the two account providers are listed first; thought levels low/high/max (derived from `reasoningLevel.values` in the builtin file's `modelRules`; same set as legacy low/max/high, different order).
+- `scripts/real-send.mjs` (account-based personal provider selected automatically by priority): create `providerId:"zcode-executor"` (personal file), GLM-5.3-Flash; one Write permission request allowed, turn `done` in 15 seconds, correct file contents. Event file contained neither `enc:v1` nor strings in the “32 characters.16 characters” form; no `zcode-executor-provider-*` directory remained in `os.tmpdir()`.
+- The team key was verified only as decryptable and usable in the provider table; no live send used it (personal is selected by default; set `preferredProvider` in plugin configuration to use the team plan).
 
-`scripts/real-send.mjs --steer-after 8 --steer-text …` 与 `--stop-after 6`，模型 GLM-5.3-Flash，审批全放行：
+## Checkpoint 6b: live interjection and stopping (2026-09-21, App 3.12.2, two short quota-consuming turns)
 
-| 验的点 | 结果 |
+`scripts/real-send.mjs --steer-after 8 --steer-text …` and `--stop-after 6`, GLM-5.3-Flash, all permission requests allowed:
+
+| Check | Result |
 | --- | --- |
-| 回合中 `v4/command sendText`（`requestedDelivery:"guide"`） | ACK `{status:"accepted", result:{delivery:"queue"}}`——**ACK 里不会出现 guide**（源码一致）；事件流随后 `turn.steerQueued`（payload `delivery:"guide"`、`pendingInputId:"queue_<commandId>"`）→ `turn.steerDrained`（`injectedMessageIds`、`drainedInputs[].delivery:"guide"`），注入点在 b.txt 写完、c.txt 写之前（工具边界）；最终 c.txt 内容按插话要求写成 `hello-steer`，回合 `resultType:"success"` |
-| 回合中 `session/stop`（带 id 的请求） | 回 `{}`；同一秒收到 `turn.completed`，`payload.resultType:"cancelled"`；`Session.send()` 结算 outcome `cancelled`，reason「回合被叫停（resultType=cancelled）」；两个回合从投递到叫停生效约 6 秒，没有再写任何文件 |
-| 事件种类 | 两条回合各只有 `turn.started` 与 `turn.completed`（外加 steer 那条的 steerQueued/steerDrained）；没有 `turn.failed`、没有 `turn.terminal` |
+| `v4/command sendText` during a turn (`requestedDelivery:"guide"`) | ACK `{status:"accepted", result:{delivery:"queue"}}`—**guide never appears in the ACK** (matching source); the event stream then emits `turn.steerQueued` (payload `delivery:"guide"`, `pendingInputId:"queue_<commandId>"`) → `turn.steerDrained` (`injectedMessageIds`, `drainedInputs[].delivery:"guide"`). Injection happened after writing b.txt and before c.txt (tool boundary); c.txt finally contained `hello-steer` as requested, turn `resultType:"success"` |
+| `session/stop` during a turn (request with id) | Returned `{}`; `turn.completed` arrived in the same second, `payload.resultType:"cancelled"`; `Session.send()` settled outcome `cancelled`, reason “回合被叫停（resultType=cancelled）” (turn stopped). Both turns took about 6 seconds from send to effective stop, and wrote no further files |
+| Event kinds | Each turn had only `turn.started` and `turn.completed` (plus steerQueued/steerDrained for the steer turn); no `turn.failed` or `turn.terminal` |
 
-## 本机环境
+## Local environment
 
-| 东西 | 情况 |
+| Item | State |
 | --- | --- |
-| ZCode 桌面 App | 3.11.2，已登录，运行中，当天新装（`recentProjects` 为空） |
-| ZCode CLI | 0.16.5，在 `/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs`，App 没把它放进 PATH |
-| 凭据 | `~/.zcode/v2/config.json`，`builtin:bigmodel-coding-plan` 带 key，模型 `GLM-5.3` / `GLM-5.3-Flash`；`builtin:zai-start-plan` 禁用且 models 为空 |
-| Node | app-server 子进程需要带 `node:sqlite` 的 Node ≥ 22；zcode-acp 的 `backend/resolve.js` 有探测逻辑 |
+| ZCode desktop App | 3.11.2, signed in, running, installed that day (`recentProjects` empty) |
+| ZCode CLI | 0.16.5, at `/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs`; the App did not add it to PATH |
+| Credentials | `~/.zcode/v2/config.json`; `builtin:bigmodel-coding-plan` has a key, models `GLM-5.3` / `GLM-5.3-Flash`; `builtin:zai-start-plan` disabled with empty models |
+| Node | The app-server child needs Node ≥ 22 with `node:sqlite`; zcode-acp's `backend/resolve.js` has detection logic |
 
-## Jev 前筛三级链（D16，T7 零费用验收）
+## Jev three-stage pre-screen pipeline (D16, T7 zero-cost acceptance)
 
-- 已实现 Jev pass 提前通过；flag/error/skip/异常进入原 ZCode 快筛，再必要慢判；原快筛调用失败仍 ask。题目版本 approval-v2，固定 jev-1.13.0，阈值维持 0.20。
-- TDD 分片：doctor RED 4→GREEN 9/9；adapter 多次 RED→GREEN 最终25/25；gate/review 75/75；runner 29/29；real-review 脚本4/4。最终 `npm test` **384/384**，退出码0，版本标记检查通过；无运行时依赖。
-- 独立只读评审发现并复验修复：凭据续行/转义空格/引用值拼接的残尾外发；路径转义空白误标。复验使用合成秘密与 fake fetch，风险凭据本地 skip、零请求，错误路径原文保留。最终限定范围 Approve，无未解决 Required/Critical；不保证未知编码、任意 shell、符号链接竞态或模型真实正确率。
-- preScreen 四种结果与最终 reviewer 区分、唯一 gate 事件、原正文回原快筛均有集成断言。响应固定模型、metadata 值过滤、最终 deadline 检查、非2xx body 取消、jitter、窗口截断 skip 有回归测试。取消不可信 body promise 不等待，不声称能强制释放恶意替身资源。
-- doctor 显示完整 pipeline；配置错误时审批状态 null，不误报 ZCode。real-review 的固定 Write 现在本地 skip Jev，明确不是 Jev HTTP 性能探针；review disabled 在 spawn/付费前拒绝。
-- 本轮无真实 Jev HTTP、无付费 session/send、无新性能比较。approval-v2 的中文数据校准及三级链配对测量仍待另行确认；旧样本不作为新版本安全证明。
-- 中间一次 review-runner 套件出现 runner-gone，临时日志已由测试清理，根因未证实；之后独立12/12与最终全量对应用例全部通过，不将未复现问题说成已查明修复。
+- Implemented an early Jev pass; flag/error/skip/exceptions proceed to the original ZCode fast screen, then slow review if needed; a failed original fast-screen call still asks a human. Question-set version approval-v2, fixed jev-1.13.0, threshold unchanged at 0.20.
+- TDD slices: doctor RED 4→GREEN 9/9; adapter repeated RED→GREEN, finally 25/25; gate/review 75/75; runner 29/29; real-review script 4/4. Final `npm test` **384/384**, exit code 0, version-marker check passed; no runtime dependencies.
+- Independent read-only review found issues that were fixed and rechecked: outbound credential tails from line continuation/escaped spaces/concatenated quoted values; incorrect path marking for escaped whitespace. Rechecks used synthetic secrets and fake fetch; risky credentials produced local skip and zero requests, and original incorrect-path text was retained. Final scoped Approve, no unresolved Required/Critical; this does not guarantee unknown encodings, arbitrary shells, symlink races, or actual model accuracy.
+- Integration assertions cover the four preScreen outcomes versus final reviewer, a single gate event, and original bodies reaching the original fast screen. Regression tests cover fixed response model, metadata-value filtering, final deadline check, non-2xx body cancellation, jitter, and skip on window truncation. Cancellation of an untrusted body promise is not awaited; no claim is made that malicious substitute resources can be forcibly released.
+- doctor displays the complete pipeline; review state is null on configuration errors rather than incorrectly reporting ZCode. real-review's fixed Write now skips Jev locally and is explicitly not a Jev HTTP performance probe; disabled review is rejected before spawn/payment.
+- This round made no real Jev HTTP request, no paid session/send, and no new performance comparison. Chinese-data calibration for approval-v2 and paired measurement of the three-stage pipeline still require separate confirmation; old samples do not prove the new version safe.
+- One intermediate review-runner suite produced runner-gone; temporary logs had been removed by test cleanup, so the cause is unproven. A later independent 12/12 run and all corresponding cases in the final full suite passed; the unreproduced issue is not claimed to have been diagnosed and fixed.
 
-## Jev 可选快筛（2026-09-18，旧替代路线的历史记录）
+## Optional Jev fast screen (2026-09-18, historical record of the old replacement approach)
 
-> 下列记录对应修复前版本，不能作为新三级前筛路线的验收证据。后续审查发现了路径替换、未知凭据处理、metadata 值与 deadline 竞态等缺口；这里的“已验证”仅限当时样本，不代表全面安全保证。
+> These records describe the version before fixes and cannot serve as acceptance evidence for the new three-stage pre-screen approach. Later review found gaps in path replacement, unknown-credential handling, metadata values, and deadline races. “Verified” here applies only to the samples at the time, not a comprehensive safety guarantee.
 
-- 自动化 fake transport 已验证固定 `jev-1.13.0` / `approval-v1`、五项 Noul、0.20 阈值、最小 state、正文省略、凭据脱敏、路径归一、有界重试和覆盖响应正文读取的总 deadline。
-- gate/runner mock 已验证：Jev pass 零次 `workspace/generateText`；Jev flag/error/adapter throw 恰好进入一次 ZCode 慢判；一次审批仍只落一条最终 `executor.gate`。
-- doctor 已验证只报告新启动 runner 的选择，不调用 TypeSafe、不 `session/send`，并且不显示 key。
-- `scripts/real-review.mjs` 已支持配置 key / 无 key 两条真实路径，要求显式 `--yes`，且不打印完整 Jev state、工具正文或模型原文。
-- 真实 TypeSafe key 真机验证（2026-09-18）：先派会话写 `jev-smoke.txt`，3 秒默认 deadline 得到 `deadline_exceeded`，随后按设计进入一次 ZCode 慢判并放行；同一最小 action 用 15 秒临时 deadline 直调 Jev，4.665 秒返回 pass。由此把内部默认总 deadline 改为 10 秒（不扩大公开配置面）。再派同一真实会话写 `jev-direct-pass.txt`，Jev 1.290 秒直接 pass，事件为唯一 `review-fast:allow`，ZCode 慢判 0 次；实际 model `jev-1.13.0`，五项概率均 <=0.20。事件负向核对无 key、Authorization、完整 state 或任务正文。mock 仍负责网络/429/schema 等不可控故障，不能把这些表述成真机故障证据。
+- Automated fake transport verified fixed `jev-1.13.0` / `approval-v1`, five Noul items, threshold 0.20, minimal state, omitted bodies, credential redaction, path normalization, bounded retries, and a total deadline covering response-body reading.
+- gate/runner mocks verified: Jev pass makes zero `workspace/generateText` calls; Jev flag/error/adapter throw enters ZCode slow review exactly once; each permission request still records only one final `executor.gate`.
+- doctor was verified to report only the selection for a newly started runner, without calling TypeSafe, making `session/send`, or displaying the key.
+- `scripts/real-review.mjs` supports both real paths, with and without a configured key, requires explicit `--yes`, and prints neither complete Jev state, tool bodies, nor raw model output.
+- Live verification with a real TypeSafe key (2026-09-18): first dispatched a session to write `jev-smoke.txt`; the default 3-second deadline produced `deadline_exceeded`, followed as designed by one ZCode slow review and allowance. A direct Jev call with the same minimal action and a temporary 15-second deadline returned pass in 4.665 seconds. This led to changing the internal default total deadline to 10 seconds (without widening public configuration). Another send to the same real session wrote `jev-direct-pass.txt`; Jev passed directly in 1.290 seconds, recording the single event `review-fast:allow`, with zero ZCode slow reviews. Actual model `jev-1.13.0`, all five probabilities <=0.20. Negative event checks found no key, Authorization, full state, or task body. Mocks still cover uncontrollable network/429/schema failures; those must not be described as live failure evidence.
 
-## 跨平台（2026-09-08，CI 实测）
+## Cross-platform (2026-09-08, verified in CI)
 
-- GitHub Actions 上 ubuntu-latest 与 windows-latest、Node 22 与 24 四档全跑得起来，不用装依赖。
-- **`node --test` 的 glob 不能加引号。** `node --test 'test/*.test.mjs'` 在 Windows 上一个文件都匹配不到：
-  npm 在那边用 pwsh/cmd 起脚本，单引号不会被剥掉，node 收到的是带引号的字面串。
-  而 `node --test` 匹配不到任何文件时**退出码是 0**（本机实测），于是整档 CI 假绿、`tests 0` 藏在日志里。
-  去掉引号两边都对：POSIX 的 shell 自己展开，Windows 交给 node 的 glob。
-- **别拿目录当参数。** `node --test test/` 会把 `helpers.mjs`、`mock-appserver.mjs` 这些非测试文件也当测试跑，直接失败。
-- **Windows 上已知的真实差距（CI 实测，非测试问题）**：
-  - 队列文件名不能带冒号。ISO 时间戳直接当文件名在 Windows 上一律 ENOENT，`send` 全挂（已修，`lib/queue.mjs`）。
-  - `SIGTERM` 收不到。Node 的处理器不跑，runner 的收尾（state 定稿、删锁）不发生，退出码是 null 不是 0，
-    锁文件会残留。要支持得改成 Windows 上另找一种停机信号。
-  - `process.kill(-pid, 'SIGKILL')` 杀进程组不成立（`lib/appserver.mjs`），只能杀直接子进程，zcode 的孙子进程会成孤儿。
-    这条 CI 覆盖不到（要真 zcode），是读代码得出的。
-  - 路径包含判定用字符串前缀比较（`lib/review/hard.mjs`），Windows 大小写不敏感可能误判成越界。
-    方向是保守的（多转人工，不会误放行），同样没被 CI 覆盖。
-- **两条用例在 CI 上偶发失败**：`run.test.mjs` 的「exitAfter:send 重投」与 `appserver.test.mjs` 的
-  「信封 id 只保留最近 5 个」。都起真子进程卡时序，同一个 commit 连跑三轮，前两轮各挂一条、第三轮全绿；
-  本机 Node 22 与 25 各跑三次都过。看红之前先重跑一次再判断。
-- 测试套件里六条用例是 Unix 专属手段（SIGSTOP 冻 runner、`/tmp` 符号链接归一），Windows 上跳过，不是产品缺陷。
-- ZCode App 装在哪（抄自 zcode-acp `resolve.js` 的 `bundledZcodeCandidates`）：macOS `/Applications/ZCode.app/…`
-  与 `~/Applications/…`；Linux 常见于 `/opt/ZCode/resources/glm/zcode.cjs`、`/usr/share/zcode/resources/glm/zcode.cjs`，
-  但官方说法是「解压出来的应用目录里」，位置不固定；Windows 是 `%LOCALAPPDATA%\Programs\ZCode\resources\glm\zcode.cjs`（未验）。
-  三个平台都能用 `ZCODE_BIN` 兜底。
+- All four GitHub Actions combinations—ubuntu-latest and windows-latest, Node 22 and 24—run without installing dependencies.
+- **Do not quote the glob for `node --test`.** `node --test 'test/*.test.mjs'` matches no files on Windows:
+  npm starts scripts there with pwsh/cmd, which does not strip single quotes; node receives a literal string containing quotes.
+  When `node --test` matches no files, **the exit code is 0** (verified locally), making the whole CI combination falsely green, with `tests 0` buried in logs.
+  Removing quotes works on both: POSIX shells expand the glob themselves, while Windows leaves it to node.
+- **Do not pass a directory.** `node --test test/` also runs non-test files such as `helpers.mjs` and `mock-appserver.mjs` as tests and fails outright.
+- **Known real Windows gaps (verified in CI, not test defects)**:
+  - Queue filenames cannot contain colons. ISO timestamps used directly as filenames produce ENOENT on Windows, breaking every `send` (fixed, `lib/queue.mjs`).
+  - `SIGTERM` is not received. The Node handler does not run, runner cleanup (finalizing state, deleting the lock) does not happen, exit code is null rather than 0,
+    and the lock file remains. Supporting this requires another shutdown signal on Windows.
+  - `process.kill(-pid, 'SIGKILL')` cannot kill a process group (`lib/appserver.mjs`); only the direct child can be killed, leaving zcode grandchildren orphaned.
+    CI does not cover this (requires real zcode); the conclusion comes from reading code.
+  - Path containment uses string-prefix comparison (`lib/review/hard.mjs`); Windows case insensitivity can be mistaken for an escape.
+    This is conservative (more human referrals, no mistaken allowance) and likewise not covered by CI.
+- **Two cases fail intermittently in CI**: “exitAfter:send 重投” in `run.test.mjs` (resend after exitAfter:send) and
+  “信封 id 只保留最近 5 个” in `appserver.test.mjs` (retain only the latest 5 envelope ids). Both launch real child processes and depend on timing. Three consecutive runs of the same commit failed one case each in the first two runs; the third passed entirely.
+  Three local runs each on Node 22 and 25 all passed. Rerun once before interpreting a red result.
+- Six suite cases use Unix-only mechanisms (SIGSTOP to freeze the runner, `/tmp` symlink normalization) and are skipped on Windows; these are not product defects.
+- ZCode App locations (copied from zcode-acp `resolve.js`, `bundledZcodeCandidates`): macOS `/Applications/ZCode.app/…`
+  and `~/Applications/…`; on Linux, common paths are `/opt/ZCode/resources/glm/zcode.cjs` and `/usr/share/zcode/resources/glm/zcode.cjs`,
+  but the official description is “inside the extracted application directory”, so the location is not fixed; Windows `%LOCALAPPDATA%\Programs\ZCode\resources\glm\zcode.cjs` (unverified).
+  All three platforms can fall back to `ZCODE_BIN`.
 
-## app-server 协议
+## app-server protocol
 
-协议全文见 `reference/zcode-app-server-protocol.md`。下面是本机跑出来、
-文档没写或与文档有出入的部分。实测经 zcode-acp-server 0.17.1 做，
-标「直连不适用」的是 zcode-acp 自己造的行为。
+The full protocol is in `reference/zcode-app-server-protocol.md`. Below are locally observed parts
+that are undocumented or differ from the documentation. Checks used zcode-acp-server 0.17.1;
+items marked “not applicable to direct connection” are behaviors created by zcode-acp itself.
 
-| 验的点 | 结果 |
+| Check | Result |
 | --- | --- |
-| 启动 | `[node, zcode.cjs, "app-server", "--stdio"]`；coder-mcp-bridge 另设 `ELECTRON_RUN_AS_NODE=1`、`NO_COLOR=1`、删掉 `ZCODE_MODEL` |
-| 信封 | 0.16+ 没有 `jsonrpc` 字段：请求 `{id, method, params}`，响应 `{id, result}` / `{id, error}`，通知 `{method, params}` |
-| 握手 | 新版 app-server 会先发 `session/requestRuntimePreferences` 反向请求，不答则 `session/create` 卡住。zcode-acp 回 `{nativeSearchEnhancementsEnabled:false, memoryEnabled:false, askUserQuestionAutoResolutionEnabled:false}` |
-| `session/create` | 立刻返回真 `sess_` id。coder-mcp-bridge 传 `{workspace:{workspacePath,workspaceKey}, persistence:"immediate", titleGenerationEnabled:false}` 加可选 `mode`（plan/build/edit/yolo/auto）、`toolAllowlist`、`toolDenylist`、`runtimeModel`、`thoughtLevel` |
-| 反向请求 | `interaction/requestPermission`、`interaction/requestUserInput`（AskUserQuestion、ExitPlanMode）、`interaction/requestProviderRuntimeHeaders`、`interaction/requestOfficialMcpAuthHeaders`。未答的请求每秒重发一次，同一 `params.requestId` 但**信封 id 每次都换**；zcode-acp 的做法是记下所有信封 id，答案出来后逐个回，并缓存结果给迟到的重发（`handlers/server-requests.js` 271 到 290 行）。只回第一个信封 id 对端认不认，未验，别赌 |
-| 审批 | yolo 档全程 0 次审批请求，直接写文件。允许类 optionId 含 `allow_once`，未识别的 id 一律当拒绝。**应答形状**（zcode-acp `interaction/adapter.js` 与 `handlers/server-requests.js`）：`requestPermission` 回 `{decision:"allow"}` 或 `{decision:"deny", reason}`；`requestUserInput`（AskUserQuestion）回 `{action:"accept", content:{answers:{[question 原文]: "value"}}}`（多选用 `", "` 拼接），拒答回 `{action:"decline", reason}`；ExitPlanMode 的应答也走 `{decision}`，build 档不会遇到 |
-| 回合结束 | `turn.completed` / `turn.failed` / `turn.terminal` 事件。zcode-acp 另有一套 120 秒无信号与 10 分钟水位线冻结的兜底，直连时是否需要待验 |
-| `session/send` | 回合进行中再发一条会被当作 steer 输入排队 |
-| 事件种类 | `turn.started`、`model.streaming`、`tool.updated`、`turn.completed`、`turn.failed`、`session.updated`、`state.updated`（模型/档位切换）；另有 `computer-use/operation-event`、`process/mcpTelemetry` 可丢弃 |
-| resume | 跨进程 resume 保住模型选择和上下文（zcode-acp 0.17.1 上 resume 后首次投递被拒，根因是它同步 provider 表时没过滤空 provider，0.18.1 已修；直连时自己过滤） |
-| 已删方法 | 0.16+ 删了 `session/steer`、`session/rewind`、`prompt/enhance*`；0.16.5 删了 `automation/*` |
-| `workspace/generateText` | 从 zcode.cjs 的 zod schema 核出（未真机调用）：params `{workspace, modelRef:{providerId,modelId,variant?}, prompt 或 messages（至少一个）, tools?, querySource（必填字符串）, maxOutputTokens?, operationId?}`，**没有 thoughtLevel 字段，思考档走 `modelRef.variant`**；result `{text, modelRef, toolCalls?, finishReason?, usage?}`。复用该 workspace 已有会话进程，没有就临时起一个用完关。`cancelGenerateText` 参数 `{operationId}`。zcode-acp 没用它 |
-| `workspace/readState` | 唯一返回可用模型全集的方法。params `{workspace, preferWorkspaceDefaults?, runtimeModel?}`；result `settings.model.{current,available[],lastUsed}`，每个模型有 `ref、label、reasoning.{enabled,levels[],defaultLevel}、disabledReason`；`settings.thoughtLevel.{enabled,current,defaultLevel,available[]}`。`session/read` 的 result 带同一份 settings。zcode-acp 不走它，直接读 config.json |
-| 思考等级 | 协议层是自由字符串，合法值按模型定。GLM-5.3 族 `low / high / max`（默认 max），无 medium 无关闭；GLM-5.2 有 `nothink`；toggle 类模型是 `enabled / disabled`。`session/create` 传非法值**静默忽略**只打 warn；`session/setThoughtLevel` 才报错。CLI 认 `disabled/none/off/nothink` 为关闭，但只有出现在该模型 levels 里的才可用 |
-| diff | 协议只给改动文件名，不给内容。验收靠 `git diff` |
+| Startup | `[node, zcode.cjs, "app-server", "--stdio"]`; coder-mcp-bridge also sets `ELECTRON_RUN_AS_NODE=1`, `NO_COLOR=1`, and removes `ZCODE_MODEL` |
+| Envelope | No `jsonrpc` field starting with 0.16+: request `{id, method, params}`, response `{id, result}` / `{id, error}`, notification `{method, params}` |
+| Handshake | Newer app-server versions first send the reverse request `session/requestRuntimePreferences`; without an answer, `session/create` stalls. zcode-acp answers `{nativeSearchEnhancementsEnabled:false, memoryEnabled:false, askUserQuestionAutoResolutionEnabled:false}` |
+| `session/create` | Immediately returns a real `sess_` id. coder-mcp-bridge sends `{workspace:{workspacePath,workspaceKey}, persistence:"immediate", titleGenerationEnabled:false}` plus optional `mode` (plan/build/edit/yolo/auto), `toolAllowlist`, `toolDenylist`, `runtimeModel`, `thoughtLevel` |
+| Reverse requests | `interaction/requestPermission`, `interaction/requestUserInput` (AskUserQuestion, ExitPlanMode), `interaction/requestProviderRuntimeHeaders`, `interaction/requestOfficialMcpAuthHeaders`. Unanswered requests resend every second with the same `params.requestId` but **a different envelope id each time**; zcode-acp records every envelope id, answers each when the result is ready, and caches it for late resends (`handlers/server-requests.js`, lines 271 to 290). Whether the peer accepts answering only the first envelope id is unverified; do not assume it |
+| Approvals | yolo mode makes 0 permission requests and writes files directly. Allow-type optionId contains `allow_once`; unrecognized ids all mean deny. **Response shape** (zcode-acp `interaction/adapter.js` and `handlers/server-requests.js`): `requestPermission` answers `{decision:"allow"}` or `{decision:"deny", reason}`; `requestUserInput` (AskUserQuestion) answers `{action:"accept", content:{answers:{[question 原文]: "value"}}}` (`question 原文` means original question text; join multiple selections with `", "`), or `{action:"decline", reason}` to decline; ExitPlanMode also uses `{decision}`, but does not occur in build mode |
+| Turn completion | Events `turn.completed` / `turn.failed` / `turn.terminal`. zcode-acp also has fallbacks for 120 seconds without signals and a 10-minute frozen watermark; whether direct connection needs them remains unverified |
+| `session/send` | Sending another message during an active turn queues it as steer input |
+| Event kinds | `turn.started`, `model.streaming`, `tool.updated`, `turn.completed`, `turn.failed`, `session.updated`, `state.updated` (model/mode changes); `computer-use/operation-event` and `process/mcpTelemetry` can also be discarded |
+| resume | Cross-process resume preserves model selection and context (with zcode-acp 0.17.1, the first send after resume was rejected because provider-table synchronization failed to filter empty providers; fixed in 0.18.1; filter them ourselves for direct connection) |
+| Removed methods | 0.16+ removed `session/steer`, `session/rewind`, `prompt/enhance*`; 0.16.5 removed `automation/*` |
+| `workspace/generateText` | Extracted from zcode.cjs zod schema (not called live): params `{workspace, modelRef:{providerId,modelId,variant?}, prompt 或 messages（至少一个）, tools?, querySource（必填字符串）, maxOutputTokens?, operationId?}` (at least one of prompt or messages; querySource is a required string), **no thoughtLevel field; thought level goes through `modelRef.variant`**; result `{text, modelRef, toolCalls?, finishReason?, usage?}`. Reuses an existing session process for the workspace, or starts and closes a temporary one. `cancelGenerateText` params `{operationId}`. zcode-acp does not use it |
+| `workspace/readState` | The only method returning the complete available-model set. Params `{workspace, preferWorkspaceDefaults?, runtimeModel?}`; result `settings.model.{current,available[],lastUsed}`, each model has `ref、label、reasoning.{enabled,levels[],defaultLevel}、disabledReason`; `settings.thoughtLevel.{enabled,current,defaultLevel,available[]}`. `session/read` result contains the same settings. zcode-acp does not use it, reading config.json directly |
+| Thought level | A free string at protocol level, with legal values defined by model. GLM-5.3 family `low / high / max` (default max), no medium or off; GLM-5.2 has `nothink`; toggle models use `enabled / disabled`. Invalid values passed to `session/create` are **silently ignored**, with only a warn; `session/setThoughtLevel` reports errors. CLI recognizes `disabled/none/off/nothink` as off, but a value is usable only if present in that model's levels |
+| diff | Protocol supplies changed filenames only, not contents. Acceptance uses `git diff` |
 
-## 直连探针实测（2026-09-07，CLI 0.16.5，T0.2）
+## Direct-connection probe (2026-09-07, CLI 0.16.5, T0.2)
 
-| 验的点 | 结果 |
+| Check | Result |
 | --- | --- |
-| `session/create` 直连 | **不先推 provider 表就被拒**：`-32603 ModelProtocolError: Model config is missing. Create ~/.zcode/cli/config.json with an explicit model provider`。本机 `~/.zcode/cli/config.json` 只有 `skills` 一项，模型和 provider 全在 `~/.zcode/v2/config.json`，app-server 不自己读它 |
-| provider 表 | zcode-acp 在 `session/create` **之前**发 `workspace/updateProviderRegistry {workspace, registry:{providers[], generatedAt, revision}}`，registry 从 `~/.zcode/v2/config.json` 的 `provider` 构造：每项 `{providerId, kind, apiFormat（anthropic→anthropic-messages）, baseURL, label, models[]（数组，不是对象）, source, apiKey:{source:"inline", value}}`；`models[]` 每项 `{modelId, label?, contextWindow?, maxOutputTokens?, reasoning:{enabled, levels[{value,label}], defaultLevel}}`。**models 为空的 provider 必须过滤掉**（schema 要求 ≥1），本机 `builtin:zai-start-plan` 的 `models` 是空**数组** `[]`（其余是对象） |
-| 本机 config.json 形状 | 顶层只有 `provider`；六个 provider 都是 `kind:"anthropic"`、`source:"custom"`，`enabled` 缺省视为启用；`options.{apiKey, baseURL, apiKeyRequired?}`；`models` 是对象 `{GLM-5.3:{…}, GLM-5.3-Flash:{…}}` |
-| `session/requestRuntimePreferences` | 直连 0.16.5 时**没有收到**（至少在 create 被拒之前没有）。应答处理器保留，但不能等它 |
-| `workspace/readState` 未推表时 | 正常返回但 `modelCatalog.available` 和 `settings.model.available` 为空，`current` 是 `{providerId:"zcode-unconfigured", modelId:"missing-model"}`，`thoughtLevel.enabled:false`。所以等级分配必须在推表之后读 |
-| 推表之后（T0.2b） | `updateProviderRegistry` 回 ok，后端把 `revision` 原样记为 `appliedProviderRevision`（变更门，稳定哈希有用）。`session/create` 成功返回 `sess_` id 和 settings：`mode.current:"build"`，`thoughtLevel.current:"high"`（传入被接受并回显，available `low/high/max`，defaultLevel `max`），**默认模型落在 `builtin:bigmodel`（API Key 计费那条）而不是 coding-plan**，同名模型在三个 provider 下各一份，共 6 条。`list` 返回数组，含刚建的 id；`close` 返回 `{closed:true}` |
-| 响应形状（T0.3 抓取） | `updateProviderRegistry` 回 `{appliedProviderRevision, providerCount, status, workspace, workspaceState}`；`session/list` 回 **`{sessions:[…]}` 对象**（每项含 sessionId 等），不是裸数组；`session/subscribe` **必须带 `deliveryKind`**（用 `desktop-continuous`），缺了被拒 |
-| `toolDenylist` | `['WebSearch']` 在 schema 层被接受，create 不报错。是否真的屏蔽了工具要等有回合时验 |
-| `session/requestRuntimePreferences` 时序 | **在 create 成功之后**才到，params `{sessionId, scope:"runtime-materialization"}`。所以它不是 create 的前置握手，是 create 之后的物化阶段请求；处理器要常驻，不能只在 create 前等 |
-| cli 日志 | 探针会话只有 info 和一条 warn `session.model_selection.persist_failed`（Session model selection persistence failed，无 details），没有 error。warn 的影响未知，先记着 |
+| Direct `session/create` | **Rejected unless the provider table is pushed first**: `-32603 ModelProtocolError: Model config is missing. Create ~/.zcode/cli/config.json with an explicit model provider`. Local `~/.zcode/cli/config.json` contains only `skills`; all models and providers are in `~/.zcode/v2/config.json`, which app-server does not read itself |
+| Provider table | Before `session/create`, zcode-acp sends `workspace/updateProviderRegistry {workspace, registry:{providers[], generatedAt, revision}}`, constructing registry from `provider` in `~/.zcode/v2/config.json`: each entry `{providerId, kind, apiFormat（anthropic→anthropic-messages）, baseURL, label, models[]（数组，不是对象）, source, apiKey:{source:"inline", value}}` (apiFormat maps anthropic to anthropic-messages; models[] is an array, not an object); each `models[]` entry `{modelId, label?, contextWindow?, maxOutputTokens?, reasoning:{enabled, levels[{value,label}], defaultLevel}}`. **Filter providers with empty models** (schema requires ≥1); local `builtin:zai-start-plan` has an empty **array** `[]` for `models` (the others use objects) |
+| Local config.json shape | Top level contains only `provider`; all six providers use `kind:"anthropic"`, `source:"custom"`, and an omitted `enabled` means enabled; `options.{apiKey, baseURL, apiKeyRequired?}`; `models` is an object `{GLM-5.3:{…}, GLM-5.3-Flash:{…}}` |
+| `session/requestRuntimePreferences` | **Not received** on direct 0.16.5 connection (at least before create was rejected). Keep the response handler, but do not wait for it |
+| `workspace/readState` before pushing the table | Returns normally, but `modelCatalog.available` and `settings.model.available` are empty; `current` is `{providerId:"zcode-unconfigured", modelId:"missing-model"}`, `thoughtLevel.enabled:false`. Tier assignment must therefore read after pushing the table |
+| After pushing the table (T0.2b) | `updateProviderRegistry` returns ok; backend records `revision` unchanged as `appliedProviderRevision` (change gate; a stable hash helps). `session/create` succeeds with `sess_` id and settings: `mode.current:"build"`, `thoughtLevel.current:"high"` (input accepted and echoed, available `low/high/max`, defaultLevel `max`); **default model is under `builtin:bigmodel` (API-key billing), not coding-plan**. Each model name appears under three providers, 6 entries total. `list` returns an array including the new id; `close` returns `{closed:true}` |
+| Response shapes (T0.3 capture) | `updateProviderRegistry` returns `{appliedProviderRevision, providerCount, status, workspace, workspaceState}`; `session/list` returns an **object `{sessions:[…]}`** (entries include sessionId, etc.), not a bare array; `session/subscribe` **requires `deliveryKind`** (use `desktop-continuous`), otherwise rejected |
+| `toolDenylist` | `['WebSearch']` accepted by schema, no create error. Actual tool blocking awaits a turn |
+| `session/requestRuntimePreferences` timing | Arrives **after create succeeds**, params `{sessionId, scope:"runtime-materialization"}`. It is a post-create materialization request, not a prerequisite handshake; the handler must remain active, not just wait before create |
+| CLI log | Probe session has only info and one warn `session.model_selection.persist_failed` (Session model selection persistence failed, no details), no error. Warn impact unknown; recorded for now |
 
-## 3.12.2 直连探针实测（2026-09-18，App 3.12.2，CLI --version 仍 0.16.5）
+## 3.12.2 direct-connection probe (2026-09-18, App 3.12.2, CLI --version still 0.16.5)
 
-3.12.2 把「provider 表由宿主推给 app-server」整个换成了「app-server 自己从两个文件读」，老的握手对不上。
-一共五层，前两层是用户看到的，后三层要等修完前两层才会露出来（决定见 decisions.md D14）：
+3.12.2 replaced “host pushes the provider table to app-server” entirely with “app-server reads two files itself”, making the old handshake incompatible.
+Five layers in total: the first two are visible to the user, while the last three appear only after fixing the first two (see decisions.md D14):
 
-| 层 | 症状 | 真因 | 影响 |
+| Layer | Symptom | Actual cause | Impact |
 | --- | --- | --- | --- |
-| 1 | `zcode: 无法定位 CLI ZCode Built-in Provider Config：…/glm/provider/zcode-builtin.json, /config/provider/zcode-builtin.json`，子进程秒退 code=1 | 新 CLI 启动时自己找内置 provider 配置（`resolveBundledZCodeBuiltinProviderConfig`），只看两处：`zcode.cjs` 同目录下的 `provider/`，和 `zcode.cjs` 往上五级的 `config/provider/`——后者是源码仓库的目录层次，打包进 App 后算出来是根目录 `/config/…`。真实位置是 `<App>/Contents/Resources/config/provider/zcode-builtin.json`。App 自己拉 CLI 时是用环境变量告诉它的，我们直接 spawn 就没人告诉 | 所有命令：doctor、models、runner 全挂 |
-| 2 | `workspace/updateProviderRegistry` → -32601 Method not found；`workspace/readState` 同样没了 | 方法被删。provider 表改由 app-server 进程内的 `startProcessProviderRegistryRuntime` 从「内置配置文件 + 个人配置文件」拼出来。个人文件默认 `~/.zcode/v2/provider_config.json`，本机这份是空的（`providerRules: []`），因为用户走的是 OAuth 账号型 coding plan，App 侧没有 API-key 型 provider | 握手、doctor ③、models 全挂 |
-| 3 | （修完 1、2 才会见）`session/create` → -32602 `Unrecognized key: "runtimeModel"` | create 的参数改成 strict schema，`runtimeModel` 没了，换成 `model: {providerId, modelId, options?: {reasoningLevel}}`；而且 GLM 5.3 系列 `reasoningLevel` 必填，不带报 `Reasoning level is required` | runner 建不了会话 |
-| 4 | （同上）`workspace/generateText` → -32602 `Unrecognized key: "modelRef"` | 参数 `modelRef` 改名 `selection`，形状同上面的 `model`；老的 `variant` 改成 `options.reasoningLevel` | 模型审批全部转人工（闸门本身设计成故障安全，不会放行） |
-| 5 | **检查点 5 已证伪（2026-09-18 真机 send + generateText）**：api-key 型 provider 的模型请求**不会**先来反向请求 `interaction/requestProviderRuntimeHeaders`，回合与 generateText 都直接用个人文件里的 key 打到 open.bigmodel.cn。原推断（宿主模式 headers port 无条件 `shouldRefreshBeforeModelRequest`）读漏了按 provider 类型的门控 | 客户端保留内置应答（有 key 答 `{headersApplied:true, requestAuth:{apiKey}}`，没有答 `{headersApplied:false, errorMessage}`），账号型 provider 若真来了也能接；mock 只在剧本 `runtimeHeaders:true` 时发 | 无（真机一个回合 done，模型审批快筛 1 次 generateText 回 Y） |
+| 1 | `zcode: 无法定位 CLI ZCode Built-in Provider Config：…/glm/provider/zcode-builtin.json, /config/provider/zcode-builtin.json` (cannot locate CLI builtin provider config); child exits immediately with code=1 | New CLI locates builtin provider configuration on startup (`resolveBundledZCodeBuiltinProviderConfig`) in only two places: `provider/` beside `zcode.cjs`, or `config/provider/` five levels above `zcode.cjs`—the latter matches source-repository layout but resolves to root `/config/…` in the packaged App. Real location: `<App>/Contents/Resources/config/provider/zcode-builtin.json`. The App supplies it through an environment variable when launching CLI; direct spawn has nobody to supply it | Every command: doctor, models, runner all fail |
+| 2 | `workspace/updateProviderRegistry` → -32601 Method not found; `workspace/readState` gone too | Methods removed. app-server's `startProcessProviderRegistryRuntime` now combines builtin and personal configuration files into the provider table. Personal file defaults to `~/.zcode/v2/provider_config.json`, empty locally (`providerRules: []`) because the user uses an OAuth account coding plan and has no API-key provider in the App | Handshake, doctor ③, and models fail |
+| 3 | (Visible only after fixing 1 and 2) `session/create` → -32602 `Unrecognized key: "runtimeModel"` | create now uses a strict schema; `runtimeModel` replaced by `model: {providerId, modelId, options?: {reasoningLevel}}`; GLM 5.3 also requires `reasoningLevel`, otherwise `Reasoning level is required` | Runner cannot create sessions |
+| 4 | (Same) `workspace/generateText` → -32602 `Unrecognized key: "modelRef"` | `modelRef` renamed `selection`, same shape as `model` above; old `variant` becomes `options.reasoningLevel` | Every model review refers to a human (gate is fail-safe by design, no allowance) |
+| 5 | **Disproved at checkpoint 5 (2026-09-18 live send + generateText)**: api-key-provider model requests **do not** first trigger `interaction/requestProviderRuntimeHeaders`; both turns and generateText use the personal-file key directly at open.bigmodel.cn. The original inference (host-mode headers port always `shouldRefreshBeforeModelRequest`) missed provider-type gating | Client retains the builtin response (with key, `{headersApplied:true, requestAuth:{apiKey}}`; without, `{headersApplied:false, errorMessage}`), so it can handle an account-provider request if one arrives; mock sends only with scenario `runtimeHeaders:true` | None (one live turn done, model-review fast screen returned Y from 1 generateText) |
 
-不变的部分（都在新版上核过参数 schema）：`session/send`、`resume`、`subscribe`、`stop`、`close`、`list`、`requestRuntimePreferences`、`interaction/requestPermission`、`interaction/requestUserInput`、`session/event` 的事件种类。也就是说会话生命周期、回合结束判定、闸门那三层不用动。
+Unchanged parts (parameter schemas all checked in the new version): `session/send`, `resume`, `subscribe`, `stop`, `close`, `list`, `requestRuntimePreferences`, `interaction/requestPermission`, `interaction/requestUserInput`, and `session/event` event kinds. Session lifecycle, turn-end detection, and the three gate layers therefore need no changes.
 
-两个额外事实：
+Two additional facts:
 
-- `node zcode.cjs --version` 在 3.12.2 上仍然打印 `0.16.5`，和 3.11.2 一样。**版本号区分不了新旧**，doctor 的门槛得换判据。
-- 密钥来源：`~/.zcode/v2/config.json`（新版把它叫 legacy CLI config）里 `builtin:bigmodel-coding-plan.options.apiKey` 还是明文，而且 App 3.12.2 仍在写这个文件（mtime 2026-09-18 00:23）。`credentials.json` 里的所有值都是 `enc:v1:` 加密，读不了。所以现阶段密钥只能继续从 config.json 拿；哪天 App 不写这个文件了就断粮——这是本次适配之后最大的外部风险，doctor 要能早一步报出来。
+- `node zcode.cjs --version` on 3.12.2 still prints `0.16.5`, the same as 3.11.2. **The version number cannot distinguish old from new**; doctor needs a different criterion.
+- Key source: `builtin:bigmodel-coding-plan.options.apiKey` in `~/.zcode/v2/config.json` (called legacy CLI config in the new version) is still plaintext, and App 3.12.2 still writes it (mtime 2026-09-18 00:23). All `credentials.json` values are encrypted with `enc:v1:` and unreadable. For now, keys must still come from config.json; if the App stops writing it, that source disappears—the largest external risk after this adaptation, which doctor must report early.
 
-探针脚本已并入 `scripts/probe.mjs`（d2863e2）。
+The probe script was merged into `scripts/probe.mjs` (d2863e2).
 
-检查点 5（2026-09-18，App 3.12.2，花额度）：`scripts/real-send.mjs --yes --on-permission allow` 一个回合
-（GLM-5.3-Flash，`model` + 顶层 `thoughtLevel`）→ 审批请求 Write → allow → `turn.completed`，outcome done，
-hello.txt 建成；`scripts/real-review.mjs --yes` 快筛一次 `workspace/generateText`（`selection` 带
-`options.reasoningLevel:'low'`，inputTokens 4979）回 Y。两条路都没收到 `requestProviderRuntimeHeaders`。
-跑完 `~/.zcode/cli/log/zcode-2026-09-18.jsonl` 里 grep 不到 apiKey 原文，`$TMPDIR` 无个人 provider 文件残留。
-3.12 的事件流多了 `v4/telemetry/event`、`process/mcpTelemetry`、`computer-use/operation-event` 三种通知，
-按「未知事件原样落盘」处理，回合结束判定不受影响。
+Checkpoint 5 (2026-09-18, App 3.12.2, quota-consuming): one `scripts/real-send.mjs --yes --on-permission allow` turn
+(GLM-5.3-Flash, `model` + top-level `thoughtLevel`) → Write permission request → allow → `turn.completed`, outcome done,
+hello.txt created; one `scripts/real-review.mjs --yes` fast-screen `workspace/generateText` (`selection` with
+`options.reasoningLevel:'low'`, inputTokens 4979) returned Y. Neither path received `requestProviderRuntimeHeaders`.
+Afterwards, the raw apiKey was absent from `~/.zcode/cli/log/zcode-2026-09-18.jsonl`, and no personal provider file remained in `$TMPDIR`.
+The 3.12 event stream added `v4/telemetry/event`, `process/mcpTelemetry`, and `computer-use/operation-event` notifications;
+handle them as unknown events persisted unchanged; turn-end detection is unaffected.
 
-反向请求 `interaction/requestProviderRuntimeHeaders` 的 params 形状（从 zcode.cjs 3.12.2 源码读出；
-检查点 5 真机 api-key provider 没来过，账号型未验，真机没抓到过实例）：`{requestId: "<sessionId>:provider-runtime-headers:<uuid>", sessionId, turnId?,
-workspace, modelSelection: {providerId, modelId}, providerId, accountAccess?, reason: "model-request"}`；
-应答 `{headersApplied: true, requestAuth: {apiKey?, headers?}}` 或 `{headersApplied: false, errorMessage?}`。
+Reverse request `interaction/requestProviderRuntimeHeaders` params (read from zcode.cjs 3.12.2 source;
+checkpoint 5 live api-key provider never sent it, account-based untested, no instance captured live): `{requestId: "<sessionId>:provider-runtime-headers:<uuid>", sessionId, turnId?,
+workspace, modelSelection: {providerId, modelId}, providerId, accountAccess?, reason: "model-request"}`;
+response `{headersApplied: true, requestAuth: {apiKey?, headers?}}` or `{headersApplied: false, errorMessage?}`.
 
-### mock 复刻依据（2026-09-18 探针）
+### Basis for mock replication (2026-09-18 probe)
 
-mock（`test/mock-appserver.mjs`）里标了「真机」的地方，出处逐条记在这里，供评审核对：
+Sources for each place marked “live” in the mock (`test/mock-appserver.mjs`), for reviewer comparison:
 
-a. create 返回 `settings.model.available` 条目形状：`{ref:{providerId,modelId}, label（=modelId）,
+a. create returns `settings.model.available` entries shaped as `{ref:{providerId,modelId}, label（=modelId）,
    providerLabel, contextWindow: 1000000, maxOutputTokens: 128000, reasoning:{levels:[low,high,max],
-   defaultLevel:'max'}, properties:{inputFormat…, outputFormat…}}`；`settings.thoughtLevel` 只有
-   available / current / enabled 三个键（没有 defaultLevel）。
-b. create 只给 `model.options.reasoningLevel`、不给顶层 `thoughtLevel` 时：`model.current` 只回显
-   `{providerId, modelId}`（options 不回显），`thoughtLevel.current` 键缺失；两处都给才都在。create
-   不带 `model` 时 current 用表里第一个模型，reasoningLevel 取顶层 thoughtLevel，没给取 max。
-c. 错误原文：create 带 runtimeModel → -32602 `Invalid params — (root): Unrecognized key: "runtimeModel"`；
-   模型不在表里 → -32603 `Provider Registry 中不存在 Model: <providerId>/<modelId>`（data.name = Error /
-   ModelProtocolError）；缺 reasoningLevel → -32603 `Reasoning level is required for <providerId>/<modelId>`；
-   generateText 带 modelRef → -32602 `Invalid params — selection: Invalid input: expected object, received
-   undefined; (root): Unrecognized key: "modelRef"`；旧方法 → -32601 `Method not found: <method>`。
-d. `persistence: 'deferred'` 建的会话：create 成功、close 回 `{closed:true}`，前后 `session/list` 都不
-   列它。
-e. session 对象键集合：createdAt, mode, traceId, sessionId, sessionKind, status, target, title,
-   updatedAt, workspace（3.12.2 create 返回值里的 session 没有 model 键）。
-f. `-32031` 的 message 是客户端应答里的 `errorMessage ?? "Provider runtime headers were not applied
-   before model request attempt."`（从 zcode.cjs 源码读出）。
+   defaultLevel:'max'}, properties:{inputFormat…, outputFormat…}}` (label equals modelId); `settings.thoughtLevel` has only
+   available / current / enabled, without defaultLevel.
+b. If create receives only `model.options.reasoningLevel`, without top-level `thoughtLevel`, `model.current` echoes only
+   `{providerId, modelId}` (not options), and `thoughtLevel.current` is absent; supply both to retain both. Without
+   `model`, create uses the first model in the table; reasoningLevel comes from top-level thoughtLevel, defaulting to max.
+c. Exact errors: create with runtimeModel → -32602 `Invalid params — (root): Unrecognized key: "runtimeModel"`;
+   model absent from the table → -32603 `Provider Registry 中不存在 Model: <providerId>/<modelId>` (model absent from Provider Registry; data.name = Error /
+   ModelProtocolError); missing reasoningLevel → -32603 `Reasoning level is required for <providerId>/<modelId>`;
+   generateText with modelRef → -32602 `Invalid params — selection: Invalid input: expected object, received
+   undefined; (root): Unrecognized key: "modelRef"`; old method → -32601 `Method not found: <method>`.
+d. Session created with `persistence: 'deferred'`: create succeeds, close returns `{closed:true}`, but neither before nor after does
+   `session/list` list it.
+e. Session object keys: createdAt, mode, traceId, sessionId, sessionKind, status, target, title,
+   updatedAt, workspace (session in 3.12.2 create response has no model key).
+f. `-32031` message is the client's response `errorMessage ?? "Provider runtime headers were not applied
+   before model request attempt."` (read from zcode.cjs source).
 
-## v4/command 探针（2026-09-21，App 3.12.2，零 token）
+## v4/command probe (2026-09-21, App 3.12.2, zero tokens)
 
-插话改道的依据：ZCode 开源源码 3.14.0 读出的协议 + 本机 App 3.12.2 的零 token 探针
-（只发 v4/command 命令，不发模型请求）。v4 与旧 `session/*` 走同一条 NDJSON 流，方法名
-`v4/command`，请求 params 就是命令信封（`commandId` 用 `crypto.randomUUID()`、
-`clientId` 固定、`sessionId`、`type`、`issuedAt`、`payload`）；响应 result 是 ACK
-`{commandId, status, revisionAtDecision, reasonCode?, message?, result?}`，六态
-`accepted | rejected | stale | duplicate | noop | failed`。本机实测四条：
+Basis for rerouting interjections: protocol read from ZCode open-source 3.14.0 + a local zero-token probe on App 3.12.2
+(v4/command only, no model requests). v4 and legacy `session/*` share one NDJSON stream; method name
+`v4/command`, request params are the command envelope (`commandId` from `crypto.randomUUID()`,
+fixed `clientId`, `sessionId`, `type`, `issuedAt`, `payload`); response result is ACK
+`{commandId, status, revisionAtDecision, reasonCode?, message?, result?}`, six states
+`accepted | rejected | stale | duplicate | noop | failed`. Four local checks:
 
-| 验的点 | 结果 |
+| Check | Result |
 | --- | --- |
-| `sendText` 指向不存在的 sessionId | `{status:"rejected", reasonCode:"proto.sessionNotFound"}` |
-| `sendText` 空正文 | `{status:"failed", reasonCode:"proto.invalidPayload", message:"input must not be empty"}` |
-| `type:"stop"`、`payload:{}` 指向空闲会话 | `{status:"accepted"}` |
-| 旧 `session/create` 建的会话直接 `sendText` | 可用——不需要先订阅 v4 主题、不需要握手，v4 网关只查会话是否存在 |
+| `sendText` targeting a nonexistent sessionId | `{status:"rejected", reasonCode:"proto.sessionNotFound"}` |
+| `sendText` with empty body | `{status:"failed", reasonCode:"proto.invalidPayload", message:"input must not be empty"}` |
+| `type:"stop"`, `payload:{}` targeting an idle session | `{status:"accepted"}` |
+| Direct `sendText` to a session created by legacy `session/create` | Works—no prior v4-topic subscription or handshake needed; the v4 gateway checks only session existence |
 
-源码补的两条（未真机）：`sendText` 被接受时 `result` 为
-`{type:"inputAccepted", delivery:"startNow"|"queue", inputId}`；`requestedDelivery:"guide"`
-在回合忙时于下一个工具批次之后、下一次模型请求之前注入，没有工具边界或带附件时 CLI 自己
-退回排队（`fallbackReasonCode`），回合结束后作为下一条输入执行。**空闲会话上 `sendText`
-直接起新回合（startNow）**，所以插话只在回合进行中发。插话被接受后旧事件流照推
-`turn.steerQueued` / `turn.steerDrained`（3.11 时代我们 events.jsonl 里就有过）。
+Two source-derived additions (not live): accepted `sendText` has `result`
+`{type:"inputAccepted", delivery:"startNow"|"queue", inputId}`; `requestedDelivery:"guide"`
+is injected after the next tool batch and before the next model request when a turn is busy; without a tool boundary or with attachments, CLI
+falls back to queueing (`fallbackReasonCode`) and executes it as the next input after the turn ends. **On an idle session, `sendText`
+starts a new turn directly (startNow)**, so interject only during an active turn. Accepted interjections still push legacy-stream events
+`turn.steerQueued` / `turn.steerDrained` (already seen in our events.jsonl in the 3.11 era).
 
-## 第一次真机投递（2026-09-07，CLI 0.16.5，检查点 1）
+## First live send (2026-09-07, CLI 0.16.5, checkpoint 1)
 
-两次花额度：投递「新建 hello.txt」一回合，杀进程后 resume 再问一句。
+Two quota-consuming calls: one turn to “新建 hello.txt” (create hello.txt), then kill the process, resume, and ask one more question.
 
-| 验的点 | 结果 |
+| Check | Result |
 | --- | --- |
-| **create 必须带 `runtimeModel`** | 只推 provider 表不够：回合报 `provider_not_configured`「Model provider is missing an API key: builtin:bigmodel」（失败回合不计 usage）。create 带 `runtimeModel:{revision, generatedAt, model:{providerId, modelId}, provider:<registry 里那一项，含 apiKey:{source:"inline"}>}` 后回合正常，且 settings.model.current 就是指定的 provider/model（也解决了默认落到 API Key provider 的问题） |
-| resume | 新进程 `session/resume {sessionId, workspace}` **不带 runtimeModel** 也能接上并正常投递，上下文完整（问「刚才建了什么文件」答 hello.txt） |
-| build 档审批 | `Write` 触发 `interaction/requestPermission`，reason「Tool has side effects and requires approval」。**options 每项自带 `response` 对象**：`{kind:"allow_once", optionId:"allow_once", response:{decision:"allow", reason:"Approved once"}}`、`{kind:"allow_always", optionId:"allow_project", response:{decision:"allow", permissionUpdates:[{behavior:"allow", rules:[{toolName, ruleContent}], type:"addRules"}], reason:"Approved for this project"}}`、**`{kind:"deny", optionId:"deny", response:{decision:"deny", reason:"Denied"}}`（拒绝项 kind 是 `deny`，不是 deny_once）**。我们回 `{decision:"allow"}` 被接受 |
-| 事件流 | 一回合：`turn.started`（payload 有 input、turnNumber、queryId）→ `session.updated`×8 → `model.streaming`×15 → `tool.updated`×4（kind: scheduled / started / 带 result / batch，`toolName` 在 scheduled 与 started 两条里）→ `permission.requested` / `permission.resolved` 各一条 → `checkpoint.created` → `turn.completed`。`turn.completed.payload` 有 `response`（最后回答全文）、`usage`（inputTokens/outputTokens/totalTokens/cacheReadTokens…）、`toolCallCount`、`duration`、`resultType:"success"`。另有大量 `v4/telemetry/event`（73 条）、`computer-use/operation-event`、`process/mcpTelemetry` 通知，可丢 |
-| 额度 | 写一个文件的回合 input 32k / output 91（cacheRead 16k）；resume 后问一句 input 16k / output 9。系统提示很重，派活按回合数算账 |
-| 未验 | `session/stop` 之后推什么；`inputSource: background_task`；挂起一分钟以上再 approve 旧信封 id 认不认；`turn.terminal` 未见（只见 completed） |
-| cli 日志 | 每回合一条 warn `session.model_selection.persist_failed`，无 error |
-| CLI 全链路（2026-09-08，T2.4b 快照，第四次花额度） | `new`（本地 id，不建会话）→ `send --wait` 立刻以 5 返回并打出 pending → `status` 显示 pending 与最近工具 → `approve` applied → `follow` 拿到 done（usage 与首投一致约 32k 输入）→ 文件写出 → `list` 显示本地 id 与 `sess_`。runner 首投 create 成功；cli 日志无 error |
-| 审批请求的参数字段 | `interaction/requestPermission` 的 params 里工具参数在 **`input`**（真机 pending.json 已含 `toolName`、`input.file_path`、`input.content`、`input.command`）。MultiEdit 在 zcode 侧的形状未见过 |
-| `workspace/generateText` 真机（2026-09-08，T3.2 `scripts/real-review.mjs`，第六次花额度） | 接受 `querySource:"zcode-executor.review"`、`modelRef.variant:"high"`（coding-plan Flash），messages 形式；一次快筛 5.3 秒，usage input 5010 / output 286；返回 `{text, usage}` 与 zod 核出的形状一致。模型对「任务单授权的 Write hello.txt」回 Y → 放行 |
-| 提问真机（2026-09-08，第九次花额度） | `interaction/requestUserInput` params：`{questions:[{header, question, multiSelect, options:[{label, value, description}]}]}`（还有 requestId、sessionId、toolCallId）。**zcode 的 AskUserQuestion 工具没有独立的 value 字段**，模型自述「工具不支持 value 字段，改用 label 承载」，实际 options 里 value 与 label 相同。我们 `answer <id> 2` 送 `{action:"accept", content:{answers:{"<question 原文>":"用 hello"}}}`（label），zcode 接受并按选项写出 `hello`。answer 这条路通 |
-| AskUserQuestion 应答的处理（zcode.cjs 源码，2026-09-08） | 应答 schema `{action:"accept"|"decline"|"cancel", content?: record, reason?}` strict。`content.answers` 按 **`question` 原文**作键（兜底 `content.answer_<下标>`，单问题时 `content.answer`）；值只 `trim()` 后**原样透传**给模型（`"问题"="答案"`），不与 options 的 value/label 比对；数组值按 `", "` 拼接，与字符串等价。下发的 `options[].value` 由 app-server 补，恒等于 `label`（模型侧 schema 无 value）。`answers` 为空对象 = 用户未答（模型自行判断）；键全对不上 → 工具报「requires user answers」失败。decline/cancel → 工具不执行，模型看到拒答。唯一按值精确比对的是 plan_approval：键固定「Review this implementation plan.」，值必须是 `approve` |
-| 交付后七项核验（2026-09-08，第十一到十八次花额度，main cca7903） | ① **后台任务回合**：任务让模型用 Bash `run_in_background` 跑 `sleep 8 && echo done > bg.txt` 再轮询，整段只有一个 `turn.started`（turnNumber 0、无 inputSource），没有出现 `background_task` 回合，正常 `turn.completed`。0.16.5 的后台 Bash 完成不会另起回合（Agent 子代理未试）。② **挂起 75 秒后 approve**：zcode 接受应答并继续（9 秒后到下一步），客户端只留最近 5 个信封 id 的做法够用。③ **两条会话并行**：两个 runner、两个 app-server 子进程同时跑，24 秒内都 done，cli 日志无 error。④ **resume 报 Session not found → 重建**：把登记簿 sessionId 改成假的再投，`executor.recreated` 事件、create 成功、新 id 写回、文件写出。⑤ **toolDenylist 真的生效**：`--deny "Write Edit MultiEdit"` 后模型全程只用 Read 与 Bash（用 echo 写文件），Write 一次没出现。**cancel 后 `session/stop`**：5 秒宽限内 zcode 没有推任何 turn 结束事件（回合内 Bash sleep 在跑），只有 `tool.updated` 进度行；我们按宽限断开结算 `cancelled`，无孤儿进程。⑥ **`cancelGenerateText`** 真机返回 `{operationId, cancelled:false}`（那次 150 毫秒内已跑完），形状与 zod 核出的一致。⑦ **慢判**：Bash `git push --force origin main` 快筛 N → 慢判首行「结论： ask」，65 个输出 token，理由「命中 git-force-push…没点到 force push 也没点到 main」，2000 预算下没有截断。另：模型试图用 Bash `mkdir` 写到执行副本外时慢判也判 ask（引 outside-worktree），说明提示词里那条越界文案对 Bash 起作用 |
-| 模型审批思考等级 low（2026-09-08，第十次花额度） | 同一条快筛请求：`variant:"low"` 输出 3 token、2.1 秒；`high` 时输出 158 到 286 token、4 到 5 秒。审批默认改 low |
-| 模型审批慢判被截断（同上） | 快筛对一个范围内的 Write 回了 flag，慢判 `maxOutputTokens:600` 下模型先写了一长段逐条推理，结论行还没写到就被截断 → `parseSlow` 失败 → review-failed 转人工。思考等级 high 的输出预算要留给推理，慢判预算 600 不够 |
-| 检查点 3（2026-09-08，main 8c5ff23，第七、八次花额度） | A 范围内写：模型快筛回 Y 自动放行，无挂起，事件 `executor.gate` stage review-fast 带理由，回合 done、文件写出。B 越界写：`Write` 到 cwd 外 → 红线挂起（stage hard、ruleId outside-worktree、why 带路径），`approve` 后回合继续并写出外部文件。两次都无残留 runner。快筛预算 300 时输出约 160 token、4 秒 |
-| 检查点 2（2026-09-08，main ab6dfc8，第五次花额度） | 真 worktree + `--task`：`new` → `send --wait --task` 5（Write）→ `approve` → 模型继续读任务单后又发 **Bash `git -C …` 的审批请求**（build 档下 git 命令也要审批）→ 第二次 approve → done。`hello.txt` 只出现在 worktree，主检出零改动；`last.json` 记了任务单路径；一回合 usage 约 65k（两次模型请求 + 读任务单）。撞出 bug：`approve` 在应答生效后匹配 events 回执时遇到 `{method,params}` 行崩溃且退出码 0（T2.6 修） |
-| **没跑过回合的会话 resume 不了**（2026-09-08，T2.3b 真机） | `new` 建完立刻 `session/close` 并退出进程，runner 再 `session/resume` 报 `Session not found`。与 zcode-acp 时期的实测一致：跑过至少一回合的会话才能跨进程 resume。`session/create` 带自定义 `sessionId` 被拒：「sessionId is only supported for imported history creates」 |
+| **create requires `runtimeModel`** | Pushing the provider table is insufficient: the turn reports `provider_not_configured`, “Model provider is missing an API key: builtin:bigmodel” (failed turn has no usage). With create `runtimeModel:{revision, generatedAt, model:{providerId, modelId}, provider:<registry 里那一项，含 apiKey:{source:"inline"}>}` (provider is the registry entry, including apiKey), the turn works and settings.model.current matches the selected provider/model (also fixing the default selection of the API-key provider) |
+| resume | A new process can `session/resume {sessionId, workspace}` **without runtimeModel** and send normally with intact context (asked “刚才建了什么文件”, meaning “what file did you just create?”, answered hello.txt) |
+| build-mode approvals | `Write` triggers `interaction/requestPermission`, reason “Tool has side effects and requires approval”. **Every options entry contains a `response` object**: `{kind:"allow_once", optionId:"allow_once", response:{decision:"allow", reason:"Approved once"}}`, `{kind:"allow_always", optionId:"allow_project", response:{decision:"allow", permissionUpdates:[{behavior:"allow", rules:[{toolName, ruleContent}], type:"addRules"}], reason:"Approved for this project"}}`, and **`{kind:"deny", optionId:"deny", response:{decision:"deny", reason:"Denied"}}` (deny-option kind is `deny`, not deny_once)**. Our response `{decision:"allow"}` was accepted |
+| Event stream | One turn: `turn.started` (payload includes input, turnNumber, queryId) → `session.updated`×8 → `model.streaming`×15 → `tool.updated`×4 (kind: scheduled / started / with result / batch, `toolName` in scheduled and started) → one each of `permission.requested` / `permission.resolved` → `checkpoint.created` → `turn.completed`. `turn.completed.payload` includes `response` (full final answer), `usage` (inputTokens/outputTokens/totalTokens/cacheReadTokens…), `toolCallCount`, `duration`, `resultType:"success"`. Also many `v4/telemetry/event` (73), `computer-use/operation-event`, and `process/mcpTelemetry` notifications; can be discarded |
+| Quota | File-writing turn: input 32k / output 91 (cacheRead 16k); one question after resume: input 16k / output 9. Heavy system prompt; budget dispatches by turn count |
+| Unverified | Events after `session/stop`; `inputSource: background_task`; whether old envelope ids are accepted after pending for over a minute; no `turn.terminal` observed (only completed) |
+| CLI log | One warn `session.model_selection.persist_failed` per turn, no error |
+| Full CLI path (2026-09-08, T2.4b snapshot, fourth quota-consuming call) | `new` (local id, no session creation) → `send --wait` immediately returns 5 with pending contents → `status` shows pending and recent tools → `approve` applied → `follow` gets done (usage matches first send, about 32k input) → file written → `list` shows local id and `sess_`. Runner created the session on first send; CLI log has no error |
+| Permission-request argument field | In `interaction/requestPermission` params, tool arguments are in **`input`** (live pending.json contained `toolName`, `input.file_path`, `input.content`, `input.command`). Zcode-side MultiEdit shape has not been observed |
+| Live `workspace/generateText` (2026-09-08, T3.2 `scripts/real-review.mjs`, sixth quota-consuming call) | Accepts `querySource:"zcode-executor.review"`, `modelRef.variant:"high"` (coding-plan Flash), messages form; one fast screen took 5.3 seconds, usage input 5010 / output 286; returned `{text, usage}` matches zod-derived shape. Model answered Y for “任务单授权的 Write hello.txt” (Write hello.txt authorized by the task file) → allow |
+| Live question (2026-09-08, ninth quota-consuming call) | `interaction/requestUserInput` params: `{questions:[{header, question, multiSelect, options:[{label, value, description}]}]}` (plus requestId, sessionId, toolCallId). **zcode's AskUserQuestion tool has no separate value field**; the model reported “工具不支持 value 字段，改用 label 承载” (value is unsupported; label must carry it), and actual options had equal value and label. Our `answer <id> 2` sent `{action:"accept", content:{answers:{"<question 原文>":"用 hello"}}}` (label; `<question 原文>` = original question text, `用 hello` = use hello); zcode accepted it and wrote `hello` as selected. The answer path works |
+| AskUserQuestion response handling (zcode.cjs source, 2026-09-08) | Strict response schema `{action:"accept"|"decline"|"cancel", content?: record, reason?}`. `content.answers` uses the **original `question` text** as key (fallback `content.answer_<下标>`, where `<下标>` means index; for one question, `content.answer`); values are only `trim()`med and **passed unchanged** to the model (`"问题"="答案"`, meaning “question”=“answer”), without matching options value/label; arrays join with `", "`, equivalent to strings. app-server supplies `options[].value`, always equal to `label` (no value in model-side schema). Empty `answers` object means unanswered (model decides); no matching keys → tool fails with “requires user answers”. decline/cancel → tool not executed, model sees a declined response. Only plan_approval compares values exactly: fixed key “Review this implementation plan.”, value must be `approve` |
+| Seven post-delivery checks (2026-09-08, eleventh through eighteenth quota-consuming calls, main cca7903) | ① **Background-task turn**: task requested Bash `run_in_background` with `sleep 8 && echo done > bg.txt`, then polling. Exactly one `turn.started` (turnNumber 0, no inputSource), no `background_task` turn, normal `turn.completed`. Background Bash completion on 0.16.5 starts no separate turn (Agent subagents untested). ② **approve after 75 seconds pending**: zcode accepted and continued (next step 9 seconds later); retaining only the latest 5 envelope ids is sufficient. ③ **Two parallel sessions**: two runners and two app-server children ran concurrently, both done within 24 seconds, no CLI-log error. ④ **resume Session not found → recreation**: replace registry sessionId with a fake and resend; `executor.recreated`, successful create, new id saved, file written. ⑤ **toolDenylist works**: after `--deny "Write Edit MultiEdit"`, model used only Read and Bash (echo to write), no Write. **`session/stop` after cancel**: no turn-end event within the 5-second grace period (Bash sleep running), only `tool.updated` progress; disconnected at grace expiry and settled `cancelled`, no orphan processes. ⑥ **`cancelGenerateText`** returned `{operationId, cancelled:false}` live (already finished within 150 milliseconds), matching zod-derived shape. ⑦ **Slow review**: Bash `git push --force origin main`, fast screen N → slow-review first line “结论： ask” (conclusion: ask), 65 output tokens, reason “命中 git-force-push…没点到 force push 也没点到 main” (git-force-push matched; neither force push nor main was specified), no truncation with budget 2000. Also, when the model tried Bash `mkdir` outside the worktree, slow review returned ask (citing outside-worktree), showing the prompt's boundary rule works for Bash |
+| Model-review thought level low (2026-09-08, tenth quota-consuming call) | Same fast-screen request: `variant:"low"` output 3 tokens in 2.1 seconds; `high` output 158 to 286 tokens in 4 to 5 seconds. Review default changed to low |
+| Truncated model slow review (same date) | Fast screen flagged an in-scope Write; with slow-review `maxOutputTokens:600`, the model wrote lengthy itemized reasoning and was truncated before the conclusion line → `parseSlow` failed → review-failed referred to a human. high thought-level budget must allow reasoning; 600 is insufficient for slow review |
+| Checkpoint 3 (2026-09-08, main 8c5ff23, seventh and eighth quota-consuming calls) | A in-scope write: model fast screen Y, automatically allowed without pending; `executor.gate` stage review-fast with reason, turn done, file written. B outside write: `Write` outside cwd → hard-rule pending (stage hard, ruleId outside-worktree, why with path); after `approve`, turn continued and wrote the external file. No runner remained after either. Fast-screen budget 300 produced about 160 tokens in 4 seconds |
+| Checkpoint 2 (2026-09-08, main ab6dfc8, fifth quota-consuming call) | Real worktree + `--task`: `new` → `send --wait --task` 5 (Write) → `approve` → model read task file, then requested **Bash `git -C …` permission** (git commands also require permission in build mode) → second approve → done. `hello.txt` appeared only in the worktree, main checkout unchanged; `last.json` recorded the task path; turn usage about 65k (two model requests + reading task file). Found bug: after the answer applied, `approve` crashed while matching event receipts on a `{method,params}` line yet exited 0 (fixed in T2.6) |
+| **Sessions that have never run a turn cannot resume** (2026-09-08, T2.3b live check) | Immediately after `new`, `session/close` and exit; runner's `session/resume` reports `Session not found`. Matches zcode-acp-era checks: at least one turn is required for cross-process resume. Custom `sessionId` on `session/create` rejected: “sessionId is only supported for imported history creates” |
 
-## 凭据文件探针（2026-09-21，App 3.12.2，scripts/probe-credentials.mjs，零 token）
+## Credentials-file probe (2026-09-21, App 3.12.2, scripts/probe-credentials.mjs, zero tokens)
 
-T6-C 的背景事实，用户本机跑探针核实；加密与键名细节从 ZCode 开源源码 3.14.0 读出、本机文件格式核对：
+Background facts for T6-C, checked with a probe on the user's machine; encryption and key names read from ZCode open-source 3.14.0 and compared with the local file format:
 
-- 密钥来源 fallback（`zcode-credential-fallback:<platform>:<homedir>:<username>` 的 sha256）能解开本机
-  credentials.json 里的值（未设 `ZCODE_CREDENTIAL_SECRET`）。
-- `oauth:active_provider` = `bigmodel`；`oauth:bigmodel:user_info` 解出 JSON，字段 id、username、displayName、rawProfile。
-- 个人版与团队版 coding plan 的 api-key 键都在，值长度 49、含点号（`apiKey.secretKey` 形态）。
-- 加密形状：`enc:v1:<iv>.<tag>.<密文>` 三段 base64url，AES-256-GCM，iv 12 字节、authTag 16 字节；
-  不带前缀的值按明文用。
-- 键名是 App 的私有实现：`account-provider:coding-plan:account:<family>-<plan>-coding-plan:account:<encodeURIComponent(id)>:api-key`。
-  哪天改了就读不到，读不到要明确报「不可用」，不静默（D19）。
+- Fallback key derivation (sha256 of `zcode-credential-fallback:<platform>:<homedir>:<username>`) decrypts values in local
+  credentials.json (`ZCODE_CREDENTIAL_SECRET` unset).
+- `oauth:active_provider` = `bigmodel`; `oauth:bigmodel:user_info` decrypts to JSON with id, username, displayName, rawProfile.
+- Both personal and team coding-plan api-key entries exist; values are 49 characters with a dot (`apiKey.secretKey` form).
+- Encryption form: `enc:v1:<iv>.<tag>.<密文>` (`<密文>` means ciphertext), three base64url segments, AES-256-GCM, iv 12 bytes, authTag 16 bytes;
+  values without the prefix are used as plaintext.
+- Key name is private App implementation: `account-provider:coding-plan:account:<family>-<plan>-coding-plan:account:<encodeURIComponent(id)>:api-key`.
+  A change would make it unreadable; explicitly report unavailable rather than silently continuing (D19).
 
-## 闲时任务探针（2026-09-27，App 3.14.1，CLI 0.16.9）
+## Off-peak-task probe (2026-09-27, App 3.14.1, CLI 0.16.9)
 
-事实来自拆 App 安装包（`app.asar` 的 host / scheduler 进程与 `glm/zcode.cjs`）加本机探针。
-探针脚本在会话 scratchpad，没进仓库；取号两次（用掉两次免费取号），模型调用一次极小的。
+Facts from unpacking the App (`app.asar` host / scheduler processes and `glm/zcode.cjs`) plus local probes.
+Probe scripts were in the session scratchpad, not committed; obtained two tickets (using two free acquisitions), one tiny model call.
 
-| 验的点 | 结果 |
+| Check | Result |
 | --- | --- |
-| 谁管闲时队列 | 桌面宿主进程（`OffPeakTaskService`），不是 CLI。CLI 只有模型工具 `OffPeakCreate`/`OffPeakList`，建会话带 `offPeakToolEnabled:true` 才挂上，调用时发反向请求 `offPeak/create`、`offPeak/list` 给客户端 |
-| 服务器与鉴权 | 生产 origin `https://zcode.z.ai`，接口前缀 `/api/v1/off-peak`；头 `Authorization: Bearer <JWT>` + `x-coding-plan-api-key: <账号 Coding Plan key>`。JWT 在 credentials.json 键 `zcodejwttoken`（同一套 AES-GCM），载荷字段 `user_id, token_version, sub, iat`，**没有 exp** |
-| `GET /ticket/availability`（零额度） | `{code:0, data:{can_take_number:true}}`；不可取时带 `next_take_at` |
-| `POST /ticket {task_id}` | `{ticket_id, task_id, state:"queued", position, next_poll_after:90, queued_at}`。第一次排第 1 位，第二次排第 15 位 |
-| `POST /ticket/status {ticket_ids}` | 两次都在 30 到 100 秒内变 `ready`，带 `ready_deadline`（约 queued_at + 310 秒，**就绪只有约 5 分钟**），`position:null` |
-| `POST /ticket/<id>/settle` | 对已过期的票也回 200，data 原样带 `state:"expired"` |
-| 直接 fetch 打 `/anthropic/v1/messages` | 换模型名、换请求头组合都是 400 `code 3001 parameter error`，原因没查实；改走 CLI 就好了（见下两行），不再深究 |
-| 普通 api-key provider 指向闲时地址 | CLI 对 `z.ai`/`bigmodel.cn` 域名下的 provider 强制做客户端签名，签名 key 要「id.secret」一个点的形状，JWT 有两个点 → 本地报「Client signing credential must contain one separator」，请求没发出去。只有 `zhipu-account` 的 `off-peak`/`start-plan` 免签（`wEs`） |
-| 个人 provider 文件里写 `zhipu-account` 条目 | 整份个人文件失效，连普通 provider 都没了（create 报 Model 不存在） |
-| **官方闲时 provider + updateAccountConfig（可行路线）** | 内置 `account:<family>-offpeak-idle-plan` 在 CLI 里一直都有，只是 `entitled:false`。推 `provider/updateAccountConfig {revision, basedOnZCodeBuiltinRevision, providers:{<id>:{access:{type:"zhipu-account", entitled:true}}}, states:{<id>:{availability:"available", entitled:true, current:true}}}` 回 `received`。**`basedOnZCodeBuiltinRevision` 必须是 `zcode-builtin:<内置文件 revision>:<sha256(内置文件绝对路径)>`**，不等 CLI 整份忽略（这就是 D19 时账号 provider「推了也找不到」的原因）。之后 `session/send` 带 `modelSelection:{providerId:<id>, modelId, options:{reasoningLevel}}`、`modelExecution:{selectionScope:"execution", memoryExtraction:"skip", requestAuth:{apiKey:<JWT>, headers:{Authorization, X-Coding-Plan-Api-Key, X-Off-Peak-Ticket-ID}}, subagents:{foregroundModel:"submission", background:"deny"}}`、`offPeakTaskId`、`offPeakRunType:"init"` |
-| 过期票发回合（零额度） | 请求真的到了 zcode.z.ai，回 400 `3102 off-peak ticket has expired or exceeded max running time`；`turn.failed` 的 code `3102`、message 以 `off-peak-ticket-expired:` 开头（CLI 的闲时失败判定生效） |
-| **端到端（取号第二次）** | 取号排第 15 位，30 秒后 ready → 推账号配置 → send「只回复两个字：收到」→ `account:bigmodel-offpeak-idle-plan`/`GLM-5.3-Flash` 请求 6.3 秒完成，`turn.completed` `resultType:"success"`、response「收到」、usage input 31619 / output 3。票随后是 `active`，`active_deadline` = 第一条请求 + **3 小时整**；settle 后 `state:"settled"` |
-| 假号（零额度） | 2026-09-27 真机：`POST /ticket/status {ticket_ids:["1000000000000000000"]}` 回 `{code:0, data:{next_poll_after:90, tickets:[{ticket_id, state:"not_found", position:null}]}}`；推好授权后用这个号发闲时回合，`turn.failed`、`payload.error.code` `"3104"`、message「off-peak ticket is invalid」（CLI stderr 打 ProviderBusinessError，`providerCode: 3104`，HTTP 400）。doctor 全链路层靠这两条（OP3 真机复跑两次结果相同） |
-| 没推授权就选闲时 provider | 回合 `turn.failed`，`turn.terminal` 的 errorCode `provider_not_found`、`turnPhase: model_creation`、message「Provider Registry 中不存在 Provider: account:bigmodel-offpeak-idle-plan」 |
-| deferred 会话发过回合会留记录 | `persistence:"deferred"` 建的会话**一发回合就写进** `~/.zcode/cli/db/db.sqlite` 的 `session` 表（只 create + close 不发回合时不留，见上文 3.12.2 探针）。v4 命令 `deleteSession` 回 `accepted`，但源码里它只调宿主的 `closeSession`，CLI 库里的行不删。这些会话不在 App 的 `tasks-index.sqlite` 里，App 任务列表看不到。v4 `renameSession {title}` 真机可用（OP3 真机复跑后库里标题是「zcode-executor doctor 闲时自检」） |
-| doctor ⑤ 真机（OP3 合并前） | `doctor --offpeak --json`：ok、退出码 0、stderr 为空、约 4 秒；完整 doctor 七行全部正常；内置文件换成删掉闲时条目的副本 → 「接口变了（内置条目…）」、退出码 1；输出里查不到 JWT 与 key |
-| 检查点 6a（2026-09-28，offpeak 分支 42c0d63） | 新会话（GLM-5.3-Flash）`send --offpeak`：排第 9 位，约 1 分钟就绪，回合 46 秒 done，改动正确；taken/ready/started/settled 事件齐全，号已结算；回合的模型请求全走 `account:bigmodel-offpeak-idle-plan`，只有闸门快筛那一次走普通 provider；runs 目录 5 个文件查不到 JWT 与 key |
-| 检查点 6b | 同一会话先普通投递返工（done，offpeak.json 不受影响），再 `--offpeak` 返工：发的是原文、`runType:"init"`，done，号结算 |
-| 检查点 6c（部分） | 闲时回合里红线挂起（写 /tmp）**压 10 分钟**再放行：6 秒后模型发起下一步，号仍有效。40 分钟那档被我们自己的默认回合超时（`waitTimeoutSec` 1800 秒，从回合开跑算、挂起时间也算）在第 30 分钟截断，结局 timeout 并正常结算，**没测成**；要带 `--timeout 5400` 重测 |
-| 免费取号额度 | 2026-09-28 本地时间 02:07–02:11 成功取号 3 次后，第 4 次回 3103「take number limit exceeded」，`next_take_at` 为次日 00:00（本地，UTC+8）。前一天用了 2 次。推断**每天约 3 次、零点重置**；客户端把它换算成本地时间报出，退出码 2（真机走通）。一次闲时投递最多用 3 个号，可能一次吃光当天额度 |
-| requestAuth 落盘 | 探针后查 `~/.zcode/cli` 与 tasks-index.sqlite 最近 3 小时写过的文件，JWT 与 plan key 都查不到 |
-| 错误码（源码） | 建任务 3101 没资格、3103 额度用完（带 `next_take_at`）；运行中 3105 或 HTTP 429 = 还在排队（CLI 退避重试，最长 5 分钟一次），3102/3001 = 票过期（桌面端回队重新取号，续跑发固定提示「Continue the previous task from where it left off…」、`offPeakRunType:"resume"`） |
+| Off-peak queue owner | Desktop host process (`OffPeakTaskService`), not CLI. CLI has only model tools `OffPeakCreate`/`OffPeakList`, enabled with `offPeakToolEnabled:true` at session creation; tool calls send reverse requests `offPeak/create`, `offPeak/list` to the client |
+| Server and authentication | Production origin `https://zcode.z.ai`, API prefix `/api/v1/off-peak`; headers `Authorization: Bearer <JWT>` + `x-coding-plan-api-key: <账号 Coding Plan key>` (`账号 Coding Plan key` means account Coding Plan key). JWT is credentials.json key `zcodejwttoken` (same AES-GCM), payload `user_id, token_version, sub, iat`, **no exp** |
+| `GET /ticket/availability` (zero quota) | `{code:0, data:{can_take_number:true}}`; when unavailable, includes `next_take_at` |
+| `POST /ticket {task_id}` | `{ticket_id, task_id, state:"queued", position, next_poll_after:90, queued_at}`. First ticket position 1, second position 15 |
+| `POST /ticket/status {ticket_ids}` | Both became `ready` within 30 to 100 seconds, with `ready_deadline` (about queued_at + 310 seconds, **only about 5 minutes to start**), `position:null` |
+| `POST /ticket/<id>/settle` | Even expired tickets return 200, with data retaining `state:"expired"` |
+| Direct fetch to `/anthropic/v1/messages` | Different model names and header combinations all returned 400 `code 3001 parameter error`; cause not established. CLI worked (next two rows); not investigated further |
+| Ordinary api-key provider pointed at off-peak URL | CLI requires client signing for providers under `z.ai`/`bigmodel.cn`; signing key must have one dot, “id.secret”, but JWT has two → local error “Client signing credential must contain one separator”, no request sent. Only `zhipu-account` `off-peak`/`start-plan` bypass signing (`wEs`) |
+| `zhipu-account` entry in personal provider file | Invalidates the whole personal file, removing even ordinary providers (create reports model absent) |
+| **Official off-peak provider + updateAccountConfig (working approach)** | Builtin `account:<family>-offpeak-idle-plan` has always existed in CLI, only with `entitled:false`. Push `provider/updateAccountConfig {revision, basedOnZCodeBuiltinRevision, providers:{<id>:{access:{type:"zhipu-account", entitled:true}}}, states:{<id>:{availability:"available", entitled:true, current:true}}}` → `received`. **`basedOnZCodeBuiltinRevision` must be `zcode-builtin:<内置文件 revision>:<sha256(内置文件绝对路径)>`** (builtin-file revision and sha256 of its absolute path); if unequal, CLI ignores the entire update (why account providers were “pushed but not found” in D19). Then `session/send` with `modelSelection:{providerId:<id>, modelId, options:{reasoningLevel}}`, `modelExecution:{selectionScope:"execution", memoryExtraction:"skip", requestAuth:{apiKey:<JWT>, headers:{Authorization, X-Coding-Plan-Api-Key, X-Off-Peak-Ticket-ID}}, subagents:{foregroundModel:"submission", background:"deny"}}`, `offPeakTaskId`, `offPeakRunType:"init"` |
+| Turn with expired ticket (zero quota) | Request reached zcode.z.ai, returned 400 `3102 off-peak ticket has expired or exceeded max running time`; `turn.failed` code `3102`, message starts `off-peak-ticket-expired:` (CLI off-peak failure detection works) |
+| **End to end (second ticket acquisition)** | Position 15, ready after 30 seconds → push account config → send “只回复两个字：收到” (reply only with the two characters 收到, meaning “received”) → `account:bigmodel-offpeak-idle-plan`/`GLM-5.3-Flash` request completed in 6.3 seconds, `turn.completed` `resultType:"success"`, response “收到” (received), usage input 31619 / output 3. Ticket then `active`, `active_deadline` = first request + **exactly 3 hours**; after settle, `state:"settled"` |
+| Fake ticket (zero quota) | Live 2026-09-27: `POST /ticket/status {ticket_ids:["1000000000000000000"]}` returned `{code:0, data:{next_poll_after:90, tickets:[{ticket_id, state:"not_found", position:null}]}}`; after authorization, using this ticket for an off-peak turn gave `turn.failed`, `payload.error.code` `"3104"`, message “off-peak ticket is invalid” (CLI stderr ProviderBusinessError, `providerCode: 3104`, HTTP 400). Doctor's end-to-end layer relies on these two calls (OP3 live rerun twice, same results) |
+| Select off-peak provider without pushing authorization | Turn `turn.failed`; `turn.terminal` errorCode `provider_not_found`, `turnPhase: model_creation`, message “Provider Registry 中不存在 Provider: account:bigmodel-offpeak-idle-plan” (provider absent from Provider Registry) |
+| Deferred sessions persist after a turn | A `persistence:"deferred"` session **is written as soon as a turn is sent** to `session` in `~/.zcode/cli/db/db.sqlite` (create + close without a turn leaves nothing; see 3.12.2 probe above). v4 `deleteSession` returns `accepted`, but source only calls the host's `closeSession`; CLI database row remains. These sessions are absent from App `tasks-index.sqlite` and invisible in its task list. v4 `renameSession {title}` works live (after OP3 rerun, database title “zcode-executor doctor 闲时自检”, meaning off-peak self-check) |
+| Live doctor ⑤ (before OP3 merge) | `doctor --offpeak --json`: ok, exit 0, empty stderr, about 4 seconds; full doctor's seven lines all healthy; replace builtin file with a copy lacking off-peak entry → “接口变了（内置条目…）” (API changed, builtin entry…), exit 1; output contains no JWT or key |
+| Checkpoint 6a (2026-09-28, offpeak branch 42c0d63) | New session (GLM-5.3-Flash), `send --offpeak`: position 9, ready in about 1 minute, turn done in 46 seconds, correct changes; taken/ready/started/settled events complete, ticket settled; all turn model requests used `account:bigmodel-offpeak-idle-plan`, only the gate's one fast screen used an ordinary provider; no JWT or key in 5 runs-directory files |
+| Checkpoint 6b | Same session: regular rework send first (done, offpeak.json unaffected), then `--offpeak` rework: original text sent, `runType:"init"`, done, ticket settled |
+| Checkpoint 6c (partial) | Hard-rule pending in an off-peak turn (write /tmp), **held for 10 minutes** then allowed: model's next action 6 seconds later, ticket still valid. The 40-minute case was cut off at minute 30 by our default turn timeout (`waitTimeoutSec` 1800 seconds, counted from turn start including pending time), outcome timeout, ticket settled normally; **test not completed**. Rerun with `--timeout 5400` |
+| Free ticket quota | After 3 successful acquisitions on 2026-09-28 local time 02:07–02:11, fourth returned 3103 “take number limit exceeded”, `next_take_at` next day 00:00 (local, UTC+8). Previous day used 2. Inference: **roughly 3 per day, reset at midnight**; client reports converted local time, exit 2 (live path verified). One off-peak send can use 3 tickets and may exhaust that day's quota |
+| requestAuth persistence | After probes, searched files written in the last 3 hours under `~/.zcode/cli` and tasks-index.sqlite; found neither JWT nor plan key |
+| Error codes (source) | Task creation: 3101 ineligible, 3103 quota exhausted (with `next_take_at`); during execution: 3105 or HTTP 429 = still queued (CLI retries with backoff, at most 5 minutes between attempts); 3102/3001 = expired ticket (desktop returns to queue for another, continuing with fixed instruction “Continue the previous task from where it left off…” and `offPeakRunType:"resume"`) |
 
-## Coding Plan 客户端签名（2026-09-28，App 3.14.1，CLI 0.16.9）
+## Coding Plan client signing (2026-09-28, App 3.14.1, CLI 0.16.9)
 
-ZCode 对 Coding Plan 用量的优惠（用户说的 0.67 倍）不在客户端算，客户端只负责让服务器认出「这是 ZCode」：
-- 开关：带 Coding Plan key 请求 `https://zcode.z.ai/api/v1/agent/configs`，`data.codingPlanSignature.enable` 为 true 才签，结果缓存 1 小时。
-- 握手：key 须是 `id.secret` 形状；向模型服务所在域名 POST `/api/paas/c1f3a7e2/v2/client`，拿到加密私钥后本地解出 Ed25519 私钥。
-- 每个发往 `bigmodel.cn`/`z.ai`（或 Coding Plan 类 provider）的模型请求加 `X-App-Id: zcode`、`X-Client-Version`、`X-Session-Id`、`X-Client-Ts`、
-  `X-Client-Nonce`、`X-Client-Sig`（对 key id、时间戳、版本、会话 id、随机数的签名）、`X-Client-Pow`（工作量证明）。
-  账号型 off-peak / start-plan 免签（所以自拼 api-key 型闲时 provider 会撞「签名 key 须一个点」）。
-- **我们的普通派单被签了**：`ZCODE_RUNTIME_ENV=development`（只开调试日志，不换服务器；换服务器是 `ZCODE_ENV`）+ `ZCODE_LOG_DIR` 指临时目录，
-  用个人 provider 文件（providerId `zcode-executor`，指向 open.bigmodel.cn）发一次 18 token 的 `workspace/generateText`，调试日志有
-  `feature_gate enabled:true` 与 `signed_sent {signedAttempt:1, providerId:"zcode-executor"}`。回合走同一个模型请求模块，日志里没有未签名或签名失败记录。
-- 倍率本身是服务器规则，客户端代码里没有 0.67，也不显示。
+ZCode's Coding Plan usage discount (the user's 0.67 multiplier) is not computed client-side; the client only lets the server identify “this is ZCode”:
+- Feature switch: request `https://zcode.z.ai/api/v1/agent/configs` with the Coding Plan key; sign only if `data.codingPlanSignature.enable` is true, cached for 1 hour.
+- Handshake: key must be `id.secret`; POST `/api/paas/c1f3a7e2/v2/client` to the model-service domain, obtain encrypted private key, decrypt Ed25519 private key locally.
+- Each model request to `bigmodel.cn`/`z.ai` (or a Coding Plan provider) adds `X-App-Id: zcode`, `X-Client-Version`, `X-Session-Id`, `X-Client-Ts`,
+  `X-Client-Nonce`, `X-Client-Sig` (signature over key id, timestamp, version, session id, nonce), `X-Client-Pow` (proof of work).
+  Account-based off-peak / start-plan bypass signing (hence a custom api-key off-peak provider hits the one-dot signing-key requirement).
+- **Our ordinary dispatches are signed**: `ZCODE_RUNTIME_ENV=development` (enables debug logs only, not server changes; server selection uses `ZCODE_ENV`) + `ZCODE_LOG_DIR` pointing to a temporary directory;
+  one 18-token `workspace/generateText` using a personal provider file (providerId `zcode-executor`, pointing at open.bigmodel.cn) produced debug logs
+  `feature_gate enabled:true` and `signed_sent {signedAttempt:1, providerId:"zcode-executor"}`. Turns use the same model-request module; logs contain no unsigned request or signing failure.
+- The multiplier itself is a server rule; client code neither contains nor displays 0.67.
 
-## 一次性 CLI（备用路线）
+## One-shot CLI (fallback approach)
 
-`zcode --prompt "<text>" --json --mode build --cwd <dir> --resume <sess_> --attach <file> --disallowed-tools "Write Edit Bash"`。
-`--help` 列出的 `--allowed-tools`、`--max-turns` 在 0.16.5 上报 Unknown option。
-zcode-open-bridge 称此模式不读配置里的模型，要环境变量注入；是否仍如此未验。
-每次调用在库里留一行会话。
+`zcode --prompt "<text>" --json --mode build --cwd <dir> --resume <sess_> --attach <file> --disallowed-tools "Write Edit Bash"`.
+`--allowed-tools` and `--max-turns` listed by `--help` report Unknown option on 0.16.5.
+zcode-open-bridge says this mode ignores the configured model and requires environment-variable injection; whether this remains true is unverified.
+Each invocation leaves a session row in the database.
 
-## 存储与 App 共存
+## Storage and coexistence with the App
 
-- App 任务列表读 `~/.zcode/v2/tasks-index.sqlite` 的 `tasks` 表，**按 `workspace_key`（=cwd）分组**。
-  只有 zcode-acp 会往里写；直连 app-server 不写，会话不出现在 App 列表里。
-- 会话正文在 `~/.zcode/cli/db/db.sqlite`（WAL，表 `session` / `message` / `part`，
-  后两者有 `sequence` 列）。App 自己的 `zcode-cli` 子进程和我们拉起的 app-server
-  打开的是同一个文件（lsof 核实）。
-- `zcode.cjs` 里没有跨进程的会话占用锁。SQLite 保证文件不撕裂；两个进程驱动
-  同一条会话时逻辑层会不会乱，未验。
+- App task list reads `tasks` from `~/.zcode/v2/tasks-index.sqlite`, **grouped by `workspace_key` (=cwd)**.
+  Only zcode-acp writes it; direct app-server does not, so sessions do not appear in the App list.
+- Session contents are in `~/.zcode/cli/db/db.sqlite` (WAL, tables `session` / `message` / `part`,
+  last two with `sequence`). App's `zcode-cli` child and our app-server
+  open the same file (verified with lsof).
+- `zcode.cjs` has no cross-process session-ownership lock. SQLite protects file integrity; whether two processes driving
+  the same session corrupt its logical state is unverified.
 
-## zcode-acp-server 速览
+## zcode-acp-server overview
 
-- 0.27.3 共 17,300 行。值得搬的：`backend/client.js`+`listener.js`（613，拉进程与配对）、
-  `backend/resolve.js`+`credentials.js`（242）、`config/provider-registry.js`（143）、
-  `handlers/server-requests.js` 里的去重与应答（815 中一部分）、`handlers/session.js`
-  里的回合结束判定（2665 中两三百行，搜 `STALE_FREEZE_MS`）。可选 `tasks-index.js`（360）。
-- 不搬：`lazy-sessions`、`translators/*`（事件到 ACP 的映射）、`options`、`extensions`、
-  `remote`、TUI、`sandbox`、`replay`、`i18n`。
-- 版本节奏：0.17.1 → 0.27.3 用了两天。changelog 里"session-create incubates terminal REPL"
-  只在 hub/远程路径发生。0.27.3 仍未实现 ACP 侧 `session/close`。
-- 拿源码：`npm pack zcode-acp-server@0.27.3`，或 npx 缓存里的 0.17.1
-  `~/.npm/_npx/c904e5833c2b97e0/node_modules/zcode-acp-server`。
+- 0.27.3 totals 17,300 lines. Worth reusing: `backend/client.js`+`listener.js` (613, process startup and pairing),
+  `backend/resolve.js`+`credentials.js` (242), `config/provider-registry.js` (143),
+  deduplication and responses in `handlers/server-requests.js` (part of 815), turn-end detection in `handlers/session.js`
+  (two or three hundred of 2665 lines, search `STALE_FREEZE_MS`). Optional `tasks-index.js` (360).
+- Do not copy: `lazy-sessions`, `translators/*` (events to ACP mapping), `options`, `extensions`,
+  `remote`, TUI, `sandbox`, `replay`, `i18n`.
+- Release pace: 0.17.1 → 0.27.3 in two days. Changelog “session-create incubates terminal REPL”
+  occurs only on hub/remote paths. 0.27.3 still does not implement ACP-side `session/close`.
+- Source: `npm pack zcode-acp-server@0.27.3`, or 0.17.1 in the npx cache,
+  `~/.npm/_npx/c904e5833c2b97e0/node_modules/zcode-acp-server`.
 
-## 工具参数位置与 Bash 成败字段（2026-10-02，App 3.14.1，零 token，读本机 runs/）
+## Tool-argument location and Bash success/failure fields (2026-10-02, App 3.14.1, zero tokens, reading local runs/)
 
-- `tool.updated` 的 scheduled 行带 `inputOmitted:true`、`inputRef:"model_stream"`，不带 `input`；参数在同一 `toolCallId` 的
-  `model.streaming` 事件里：`kind:'tool_call'` 的 `payload.input` 是完整参数（之前还有 `tool_input_start/delta/end` 流式分片）。
-  所以 `status` 原先只在 `tool.updated` 里找 `file_path`，3.12 起 `file` 恒为 null。
-- `tool.updated` 的 result 行 `result.success` 对 Bash 退出码非 0 也是 true（x_af149b61 的 122 条结果全为 true，最近 30 个会话没见过 false）；
-  真实成败在 `result.perf.detail.command`：`exitCode`、`status:"failed"`。
-- 回复文字是 `model.streaming` 的 `kind:'text_delta'`，思考是 `reasoning_delta`（量约为回复的十几倍）；`last.json` 的 `lastText`
-  把一回合里多条消息首尾直接相连，没有分隔。
-- `events.jsonl` 九成以上是 `v4/telemetry/event` 遥测行；本机最大的事件文件 121MB。
+- `tool.updated` scheduled rows have `inputOmitted:true`, `inputRef:"model_stream"`, no `input`; arguments are in the same `toolCallId`'s
+  `model.streaming`: `kind:'tool_call'` `payload.input` contains full arguments (preceded by streamed `tool_input_start/delta/end` fragments).
+  Therefore, `status` looking only in `tool.updated` for `file_path` has always produced null `file` since 3.12.
+- `tool.updated` result-row `result.success` is true even for nonzero Bash exit codes (all 122 results in x_af149b61 true, no false in the last 30 sessions);
+  actual success/failure is in `result.perf.detail.command`: `exitCode`, `status:"failed"`.
+- Reply text is `model.streaming` `kind:'text_delta'`, reasoning is `reasoning_delta` (roughly ten-plus times the reply volume); `last.json` `lastText`
+  concatenates multiple messages within a turn with no separator.
+- Over 90% of `events.jsonl` is `v4/telemetry/event`; largest local event file 121MB.
 
-## 安全审计核实（2026-10-08，App 3.14.4，零 token，只读本机 zcode.cjs 与本机实验）
+## Security-audit checks (2026-10-08, App 3.14.4, zero tokens, read-only local zcode.cjs and local experiments)
 
-核对的是 `/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs`（打包后的单文件），没有发任何请求。
+Examined `/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs` (single bundled file), without making any requests.
 
-| 事实 | 内容 |
+| Fact | Details |
 | --- | --- |
-| 写类工具表 | `isWriteTool` 的集合是 `Write`、`Edit`、`ApplyPatch`、`Bash`；`isReadOnlyTool` 里有 `Read`、`Glob`、`Grep`、`WebSearch`、`WebFetch`、`TodoRead`、`TodoWrite` 等。`MultiEdit` 全文 0 次出现 |
-| 内置工具注册 | `registerBuiltInTools` 遍历内置工具表，按 `metadata.name` 注册。名字既有字面量，也有常量：`U1="WebFetch"`、`Oht="WebSearch"`、`jte="EvalWorkflowSnippet"` 等；只搜 `metadata:{name:"…"}` 得到的 17 个字面量条目不是完整工具表 |
-| `toolDenylist` | `session/create` 把它转成 runtime 的 `toolDisallowlist`；`registerBuiltInTools` 在注册前跳过禁止表中的工具。`web_search` 别名先归一成 `WebSearch`，所以 `--deny "WebFetch WebSearch"` 覆盖这两个内置联网工具及该别名。此次结论来自源码，没有为此发模型回合；Bash、js 和 MCP 工具的联网能力不受这两个名字限制 |
-| 工作流与闲时工具 | app-server 的 `dynamicWorkflowEnabled`、`offPeakToolEnabled` 默认均为 false；本工具的 runner 建会话时不启用它们。`EvalWorkflowSnippet` 属于动态工作流工具，注册受前一个开关控制；`OffPeakCreate` / `OffPeakList` 需要后一个开关提供的 port。闲时投递走协议参数，不靠开启这两个模型工具 |
-| `ApplyPatch` | 在本机这版的内置工具注册表中未找到它的实现。输入 schema 是 `{patch_text: string}`，**没有 `file_path`**，目标路径写在补丁正文里；补丁正文的格式没查明。机械红线对它一律转人工（没有可判的路径），等真机发得出来再补路径提取 |
-| `js` 工具 | Node REPL，输入 `{code: string, timeout_ms?, title?}`，`needsApproval:true`，权限说明原文「Node REPL can run arbitrary JavaScript with full Node privileges (require/process), like Bash」。所以闸门自保除了 Bash 的 `command`，也看 `code` |
-| 模型 key 的环境变量回落 | `ANTHROPIC_API_KEY`、`OPENAI_API_KEY` 只是 AI SDK 在没有显式给 key 时的回落；本工具走个人 provider 文件加运行时头，子进程环境里不需要它们 |
+| Write-tool table | `isWriteTool` contains `Write`, `Edit`, `ApplyPatch`, `Bash`; `isReadOnlyTool` includes `Read`, `Glob`, `Grep`, `WebSearch`, `WebFetch`, `TodoRead`, `TodoWrite`, etc. `MultiEdit` occurs 0 times in the entire file |
+| Builtin tool registration | `registerBuiltInTools` iterates the builtin table and registers by `metadata.name`. Names include literals and constants: `U1="WebFetch"`, `Oht="WebSearch"`, `jte="EvalWorkflowSnippet"`, etc.; the 17 literal entries found by searching only `metadata:{name:"…"}` are not the full tool table |
+| `toolDenylist` | `session/create` converts it to runtime `toolDisallowlist`; `registerBuiltInTools` skips disallowed tools before registration. Alias `web_search` normalizes to `WebSearch`, so `--deny "WebFetch WebSearch"` covers these two builtin network tools and the alias. Conclusion from source, no model turn sent; Bash, js, and MCP network capabilities are unaffected by these two names |
+| Workflow and off-peak tools | app-server `dynamicWorkflowEnabled` and `offPeakToolEnabled` both default false; this tool's runner does not enable them on session creation. `EvalWorkflowSnippet` is a dynamic-workflow tool, registered under the first switch; `OffPeakCreate` / `OffPeakList` need the port supplied by the second. Off-peak sends use protocol parameters, not these two model tools |
+| `ApplyPatch` | Its implementation was not found in this local version's builtin registration table. Input schema `{patch_text: string}`, **no `file_path`**; target paths are in patch text, whose format is not established. Mechanical hard rule always refers it to a human (no determinable path); add path extraction when it can be emitted live |
+| `js` tool | Node REPL, input `{code: string, timeout_ms?, title?}`, `needsApproval:true`; original permission description “Node REPL can run arbitrary JavaScript with full Node privileges (require/process), like Bash”. Gate self-protection therefore examines `code` as well as Bash `command` |
+| Model-key environment fallback | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` are AI SDK fallbacks only when no explicit key is supplied; this tool uses a personal provider file and runtime headers, so child environment does not need them |
 
-本机实验（不涉及 zcode）：
+Local experiments (no zcode involved):
 
-- Node v26.5.0 的 `fs.realpathSync`（JS 实现）先 `path.resolve` 再逐段解析：`<dir>/link/../x`（`link` 是指向别处目录的符号链接）得到 `<dir>/x`；
-  而 `fs.writeFileSync` 把原串交给内核，实际落在链接目标的上一级。两者不一致就是审计 D1 的洞，判界因此改成自己逐段解析。
-- git 2.54.0：`git status --porcelain` 对「大小没变、时间戳变了」的已跟踪文件要读内容比对，比对前会跑 `.gitattributes` 指到的 `filter.<名字>.clean`
-  （大小变了的文件不比内容，不触发）。`-c core.fsmonitor=false` 管不到它；经 `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_n` / `GIT_CONFIG_VALUE_n`
-  把 `filter.<名字>.process` 置成空串后不再跑（clean、smudge 也随之不被采用）。
+- Node v26.5.0 `fs.realpathSync` (JS implementation) first uses `path.resolve`, then resolves segments: `<dir>/link/../x` (`link` symlinks to another directory) produces `<dir>/x`;
+  `fs.writeFileSync` instead passes the original string to the kernel and lands in the symlink target's parent. This mismatch is audit D1's gap, prompting our segment-by-segment boundary resolution.
+- git 2.54.0: `git status --porcelain` reads tracked-file contents to compare when size is unchanged but timestamp changed; before comparing, it runs the `filter.<名字>.clean` named by `.gitattributes` (`<名字>` means name)
+  (size-changed files skip content comparison and do not trigger it). `-c core.fsmonitor=false` does not control this; setting `filter.<名字>.process` to an empty string through `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_n` / `GIT_CONFIG_VALUE_n`
+  stops it (clean and smudge are then also unused).
 
-## Claude Code mod（2026-10-02，Claude Code 桌面版，引擎 2.1.286）
+## Claude Code mod (2026-10-02, Claude Code desktop, engine 2.1.286)
 
-- 函数钩子插件（mod）的 `$.process.run` / `$.process.spawn` 在桌面版 Code 标签页可用（类型文件标着 "CLI only"）；
-  桌面版进程的 PATH 含 `~/.local/bin`，`/usr/bin/env node` 找得到 node（v22）。
-- `$.command.register({name})` 注册的命令就叫 `/<name>`，不带插件名前缀。
-- 桌面版 `Svg` 开 `isInteractive: true` 时，沙箱框会被宿主不定时刷新，肉眼可见地闪（面板只画过 1 次也闪）；
-  不开时按图片显示，SVG 内的 CSS 关键帧动画照样播放且不闪，面板每 250 毫秒重画一次也不闪。
-- `Text` / `Box` 的颜色写主题键（`warning`、`success`、`error`、`suggestion`、`inactive`）在浅色与深色主题下由引擎各自取色。
-- 引擎的静态检查（`claude plugin validate`）要求接收 `$` 的函数声明在模块顶层，写在 `register` 里的闭包会被拒。
-- 桌面版经 `~/.claude/settings.json` 的 `env` 设 `CLAUDE_CODE_PLUGIN_DIRS`（另加 `CLAUDE_CODE_PLUGIN_DIR_WATCH=1`）后，新开的会话就加载该目录的插件，不必重启 App。
-- 观察面板检查点 B（watch-pane 分支，`watch` + `hooks/`）：用户在桌面版按 W1–W9 试过，报告通过（派单刷新、挂起转交、回合结束提示与卡片、
-  项目过滤、浅色深色、断线重连、终端版）。W5：Claude 执行 `zcode-executor send` 时面板自动打开，宽度正常（桌面版，用户观察）；W10（其他宿主读到只有 `modules` 的 `hooks/hooks.json`）未验证。
+- Function-hook plugin (mod) `$.process.run` / `$.process.spawn` work in the desktop Code tab (type file says “CLI only”);
+  desktop process PATH includes `~/.local/bin`, and `/usr/bin/env node` finds node (v22).
+- A command registered with `$.command.register({name})` is `/<name>`, without a plugin-name prefix.
+- Desktop `Svg` with `isInteractive: true` has its sandbox frame refreshed unpredictably by the host, visibly flickering (even after drawing the pane only once);
+  without it, SVG displays as an image, CSS keyframe animations still run without flicker, and redrawing the pane every 250 milliseconds also does not flicker.
+- `Text` / `Box` theme color keys (`warning`, `success`, `error`, `suggestion`, `inactive`) are resolved by the engine separately in light and dark themes.
+- Engine static validation (`claude plugin validate`) requires functions receiving `$` to be declared at module top level; closures inside `register` are rejected.
+- After setting `CLAUDE_CODE_PLUGIN_DIRS` (plus `CLAUDE_CODE_PLUGIN_DIR_WATCH=1`) through `env` in `~/.claude/settings.json`, newly opened desktop sessions load plugins from that directory without restarting the App.
+- Watch-pane checkpoint B (watch-pane branch, `watch` + `hooks/`): user tried W1–W9 on desktop and reported success (dispatch refresh, pending handoff, turn-end notification and cards,
+  project filtering, light/dark themes, reconnection, terminal version). W5: pane opens automatically with normal width when Claude runs `zcode-executor send` (desktop, user observation); W10 (other hosts reading `hooks/hooks.json` containing only `modules`) unverified.
 
-## Claude Code 侧（官方文档核对）
+## Claude Code side (official-documentation check)
 
-- 插件可同时带 `skills/`、`bin/`（启用期间进 Bash 的 PATH）、`.mcp.json`；
-  `${CLAUDE_PLUGIN_ROOT}` 指向安装目录，`${CLAUDE_PLUGIN_DATA}` 是持久数据目录。
-- Bash 默认超时 2 分钟、上限 10 分钟；超时的命令自动转后台，完成时通知 Claude。
-  MCP 工具调用超过 2 分钟（`CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS`）同样自动转后台。
-- MCP elicitation（表单 / URL 两种）在交互会话支持，`-p` 和 SDK 模式下让那次调用失败。
-  转后台之后还能不能弹，文档没写。
-- PreToolUse 钩子和 `--permission-prompt-tool` 只作用于 Claude 自己的工具调用。
-- AskUserQuestion 在交互会话可用，`askUserQuestionTimeout` 可设自动继续；`dontAsk` 模式下不可用。
-- 插件 `bin/` 脚本经 Bash 运行时走普通 Bash 审批，`Bash(zcode-executor *)` 可做前缀白名单。
+- Plugins can contain `skills/`, `bin/` (added to Bash PATH while enabled), and `.mcp.json`;
+  `${CLAUDE_PLUGIN_ROOT}` is the installation directory; `${CLAUDE_PLUGIN_DATA}` is persistent storage.
+- Bash default timeout 2 minutes, maximum 10 minutes; timed-out commands automatically move to the background and notify Claude on completion.
+  MCP calls exceeding 2 minutes (`CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS`) also move to the background automatically.
+- MCP elicitation (forms / URLs) is supported in interactive sessions; in `-p` and SDK modes it fails the call.
+  Documentation does not say whether it can appear after backgrounding.
+- PreToolUse hooks and `--permission-prompt-tool` apply only to Claude's own tool calls.
+- AskUserQuestion is available in interactive sessions; `askUserQuestionTimeout` can enable automatic continuation; unavailable in `dontAsk` mode.
+- Plugin `bin/` scripts invoked through Bash receive ordinary Bash review; `Bash(zcode-executor *)` can be prefix-allowlisted.
 
-## 第三方项目速览
+## Third-party projects overview
 
-| 项目 | 语言 | 接 zcode 的方式 | 对外 | 活跃 |
+| Project | Language | Zcode connection | Exposed interface | Activity |
 | --- | --- | --- | --- | --- |
-| zcode-open-bridge（tizerluo） | Python 零依赖 | 直连 app-server；也用 `--prompt --json` | ACP 桥、MCP 审查工具、能力探测 | 2026-08-31 最后提交 |
-| zcode-acp（william0wang） | TypeScript | 直连 app-server | ACP 服务、TUI、远程 hub | 日发多版；README 注明参考了 open-bridge |
-| coder-mcp-bridge（Deslord319） | Python 零依赖 | 直连 app-server（`zcode_protocol.py` 13KB） | MCP 编排工具，管三种后端 | 2026-08-15 最后提交 |
+| zcode-open-bridge (tizerluo) | Python, zero dependencies | Direct app-server; also `--prompt --json` | ACP bridge, MCP review tool, capability probing | Last commit 2026-08-31 |
+| zcode-acp (william0wang) | TypeScript | Direct app-server | ACP service, TUI, remote hub | Multiple releases daily; README credits open-bridge |
+| coder-mcp-bridge (Deslord319) | Python, zero dependencies | Direct app-server (`zcode_protocol.py` 13KB) | MCP orchestration, manages three backends | Last commit 2026-08-15 |
 
-coder-mcp-bridge 的审批策略：非 plan 档下 `requestPermission` 自动批准（除写到
-exclusive 根之外），`requestUserInput` 只自动批 plan_approval。
+coder-mcp-bridge approval policy: outside plan mode, auto-approve `requestPermission` (except writes to
+exclusive roots); `requestUserInput` auto-approves only plan_approval.
 
-## start plan 投递真机探针（2026-09-29，App 3.14.1，CLI 0.16.9）
+## Live start-plan-send probe (2026-09-29, App 3.14.1, CLI 0.16.9)
 
-> `--start-plan` 已于 2026-10-02 整体撤除（decisions D21），下面是当时的实测记录。
+> `--start-plan` was removed entirely on 2026-10-02 (decisions D21); below is the verification record from that time.
 
-`send --start-plan` 全链路（T8）：授权推送、逐回合改道、宿主应答 runtime headers 全部按预期工作，但**回合被服务器挡在阿里云验证码上**。
+Full `send --start-plan` path (T8): authorization push, per-turn routing, and host runtime-header responses all work as expected, but **the server blocks the turn at the Alibaba Cloud captcha**.
 
-| 项 | 结果 |
+| Item | Result |
 | --- | --- |
-| 授权推送 | `provider/updateAccountConfig`（revision `zcode-executor-start-plan:*`）推送成功，回执 received |
-| send 改道 | `modelSelection.providerId = account:bigmodel-start-plan`、modelId GLM-5.3-Flash，请求到达 `https://zcode.z.ai/api/v1/zcode-plan/anthropic`（调试日志 `model.network.started` 的 baseURL 实证） |
-| 鉴权应答 | 宿主按 providerId 答 `{headersApplied:true, requestAuth:{apiKey:<zcodejwttoken>}}`；CLI 日志 `Client request signing skipped by provider access mode`（start-plan 免签，与源码 `wEs` 一致） |
-| 服务器回应 | HTTP **400**，`captcha verify failed`（business error，reason 被归为 auth_failed）；第二次（captcha-retry）同样 400。CLI 的重试只会再要一次运行时头，宿主答不出 captcha token 就到此为止 |
-| 对照 | 桌面 App 同时段的 start-plan 请求正常（本会话就跑在它上面）；App 宿主对 start-plan 的 runtime-headers 请求走 UI 层（内嵌阿里云验证码 SDK，`x-aliyun-captcha-verify-param`），无头宿主造不出这个头。CLI 的 standalone 端口干脆只支持 individual-coding-plan、对 start-plan 直接抛错——start plan 实际是 App-UI 依赖的通道 |
-| 结论 | 协议层实现正确且已验证到出站请求；被服务器侧验证码网关挡住是外部约束。普通投递、闲时投递不受影响 |
+| Authorization push | `provider/updateAccountConfig` (revision `zcode-executor-start-plan:*`) pushed successfully, receipt received |
+| Send routing | `modelSelection.providerId = account:bigmodel-start-plan`, modelId GLM-5.3-Flash; request reaches `https://zcode.z.ai/api/v1/zcode-plan/anthropic` (baseURL in debug `model.network.started` is evidence) |
+| Authentication response | Host answers by providerId with `{headersApplied:true, requestAuth:{apiKey:<zcodejwttoken>}}`; CLI log `Client request signing skipped by provider access mode` (start-plan bypasses signing, matching source `wEs`) |
+| Server response | HTTP **400**, `captcha verify failed` (business error, reason classified as auth_failed); second attempt (captcha-retry) also 400. CLI retries only ask for runtime headers once more; without a captcha token from the host, it stops there |
+| Comparison | Desktop App start-plan requests work during the same period (this session itself runs on it); App host handles start-plan runtime-header requests through UI (embedded Alibaba Cloud captcha SDK, `x-aliyun-captcha-verify-param`), a header a headless host cannot fabricate. CLI standalone port supports only individual-coding-plan and throws for start-plan; start plan is effectively App-UI-dependent |
+| Conclusion | Protocol implementation is correct and verified up to the outbound request; the server captcha gateway is an external constraint. Regular and off-peak sends are unaffected |
 
-npm test 从 App 宿主会话里跑会挂死的根因（同日）：宿主环境带的 `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE`、
-`ZCODE_PERSONAL_PROVIDER_CONFIG_FILE` 泄漏进测试进程，appserver.test.mjs 里「没设环境变量应抛错」的用例失真、
-spawn 用例真的拉起 app-server 等不到握手。已在 appserver.test.mjs 顶部把宿主的 `ZCODE_*` 清掉（保留 `ZCODE_BIN`）。
+Cause of npm test hanging inside an App-host session (same date): host environment `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE`,
+`ZCODE_PERSONAL_PROVIDER_CONFIG_FILE` leaked into tests; appserver.test.mjs's case expecting an error without environment variables became invalid,
+and spawn cases started a real app-server and waited indefinitely for handshake. Fixed by clearing host `ZCODE_*` at the top of appserver.test.mjs (retaining `ZCODE_BIN`).

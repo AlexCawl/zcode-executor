@@ -14,7 +14,7 @@ const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).ver
 const checkOnly = process.argv.includes('--check');
 
 const targets = [
-  ...['README.md', 'README.zh-CN.md'].flatMap((file) => [
+  ...['README.md', 'README.zh-CN.md', 'README.ru.md'].flatMap((file) => [
     { file, label: '版本徽章', pattern: /badge\/version-v\d+\.\d+\.\d+[^"'\s]*-/, replace: `badge/version-v${version}-` },
     { file, label: '徽章 alt', pattern: /alt="v\d+\.\d+\.\d+[^"]*"/, replace: `alt="v${version}"` },
   ]),

@@ -1,60 +1,60 @@
 # AGENTS.md — zcode-executor
 
-Claude Code 插件。Claude 当工头：把一件想清楚的开发任务派给本机 ZCode（GLM），
-在 worktree 里隔离执行，用 git diff 和测试客观验收。
+A Claude Code plugin. Claude acts as the foreman: it hands a well-specified development task to the local ZCode (GLM),
+which executes it in an isolated worktree, and acceptance is judged objectively with `git diff` and tests.
 
-**状态（2026-10-26）**：第一版完成并已适配 ZCode App 3.12.2 起的版本（decisions D14；2026-10-26 在 App 3.16.3 上零 token 核对全过、3.14.5 上花额度冒烟全过，见 verified.md）；插话改走 `v4/command`（D17）；接上账号型 Coding Plan（凭据文件来源，D19）；闲时投递与 `quota`（D20）随 v0.3.5 发布，start plan 投递撤而复开（D21，2026-10-09 服务器撤了人机验证后拣回）；v0.4.0 加观察面板：`watch` 子命令加 Claude Code mod（`hooks/`，D22），v0.4.1 回复按 Markdown 显示、超过两行可展开，v0.4.2–0.4.3 修长命令把工具名挤成两行、撑破卡片边框。2026-10-08 按外部安全审计加固闸门（越界判界照内核走法、闸门自保、任务单快照等，decisions D23，随 v0.5.3 发布）。Jev 快筛可配 `review.jev.proxy` 走 http(s) 代理（D24）、`review.jev.model` 指定模型（D25，缺省别名 `jev-latest`），随 v0.6.0 发布。`npm test` 817 个用例。
-术语在 [docs/CONTEXT.md](docs/CONTEXT.md)。本地开发记录（`docs/handoff/`、`docs/tasks/`、`docs/PLAN*.md`、`docs/archive/`、`docs/SPEC-offpeak.md`、`docs/SPEC-watch-pane.md`、`docs/jev-*-plan.md`、`docs/research/`）不进 GitHub，只在开发机上有；
-有它们就从 `docs/PLAN-v4.md` 与 `docs/handoff/handoff-20260908.md` 接手，没有就从 README 与 docs/PRD.md 开始。
+**Status (2026-10-26)**: the first version is complete and adapted to ZCode App 3.12.2+ (decisions D14; on 2026-10-26 the zero-token checks all passed on App 3.16.3 and a quota-spending smoke run passed on 3.14.5, see verified.md); interjection goes through `v4/command` (D17); the account-type Coding Plan is wired up (credentials-file source, D19); off-peak sends and `quota` (D20) shipped with v0.3.5, and start-plan sends were dropped and then restored (D21, picked back up on 2026-10-09 after the server removed the human verification); v0.4.0 added the watch pane: the `watch` subcommand gained a Claude Code mod (`hooks/`, D22), v0.4.1 renders replies as Markdown with expand beyond two lines, v0.4.2–0.4.3 fixed long commands squeezing the tool name onto two lines and overflowing the card border. On 2026-10-08 the gate was hardened per an external security audit (boundary checks follow the kernel's approach, gate self-protection, task-file snapshots, etc., decisions D23, shipped with v0.5.3). Jev pre-screening supports a `review.jev.proxy` http(s) proxy (D24) and a `review.jev.model` model (D25, default alias `jev-latest`), shipped with v0.6.0. `npm test` runs 817 cases.
+Glossary in [docs/CONTEXT.md](docs/CONTEXT.md). Local development records (`docs/handoff/`, `docs/tasks/`, `docs/PLAN*.md`, `docs/archive/`, `docs/SPEC-offpeak.md`, `docs/SPEC-watch-pane.md`, `docs/jev-*-plan.md`, `docs/research/`) are not in GitHub; they exist only on the development machine.
+If you have them, pick up from `docs/PLAN-v4.md` and `docs/handoff/handoff-20260908.md`; if not, start from the README and docs/PRD.md.
 
-## 分层
+## Layers
 
-| 层 | 位置 | 职责 |
+| Layer | Location | Responsibility |
 | --- | --- | --- |
-| 协议 | `lib/appserver.mjs` `lib/session.mjs` `lib/providers.mjs` `lib/offpeak-provider.mjs` `lib/startplan-provider.mjs` `lib/scrub.mjs` | 拉起 `zcode app-server --stdio`，JSON-RPC 请求配对与反向请求路由，会话生命周期，回合结束判定 |
-| 工作流 | `lib/config.mjs` `lib/credentials.mjs` `lib/offpeak.mjs` `lib/offpeak-check.mjs` `lib/offpeak-send.mjs` `lib/offpeak-run.mjs` `lib/startplan-send.mjs` `lib/startplan-run.mjs` `lib/registry.mjs` `lib/models.mjs` `lib/tiers.mjs` `lib/runs.mjs` `lib/queue.mjs` `lib/run.mjs` `lib/intent.mjs` `lib/tool-summary.mjs` `lib/snapshot.mjs` | 配置、登记簿、等级分配、队列与锁、runner 的一生、`runs/<id>/` 落盘、本回合解析与会话快照 |
-| 闸门 | `lib/gate.mjs` `lib/pending.mjs` `lib/review/` | 红线 → 模型审批（`workspace/generateText`）→ 挂起等人 |
-| 外壳 | `bin/zcode-executor` `lib/cli/` `skills/zcode-executor/` `templates/` `hooks/` `types/` | CLI 与 skill；`hooks/` 是只在 Claude Code 里生效的观察面板 mod（decisions D22），运行环境没有 Node、不 import `lib/`，数据只从 `watch` 子命令来；`types/` 是 mod 状态的类型声明，给 `claude plugin validate` 核对用。MCP 外壳按需后加 |
+| Protocol | `lib/appserver.mjs` `lib/session.mjs` `lib/providers.mjs` `lib/offpeak-provider.mjs` `lib/startplan-provider.mjs` `lib/scrub.mjs` | Spawns `zcode app-server --stdio`, JSON-RPC request pairing and reverse-request routing, session lifecycle, turn-end detection |
+| Workflow | `lib/config.mjs` `lib/credentials.mjs` `lib/offpeak.mjs` `lib/offpeak-check.mjs` `lib/offpeak-send.mjs` `lib/offpeak-run.mjs` `lib/startplan-send.mjs` `lib/startplan-run.mjs` `lib/registry.mjs` `lib/models.mjs` `lib/tiers.mjs` `lib/runs.mjs` `lib/queue.mjs` `lib/run.mjs` `lib/intent.mjs` `lib/tool-summary.mjs` `lib/snapshot.mjs` | Configuration, registry, tier assignment, queue and locks, a runner's life, `runs/<id>/` persistence, per-turn parsing and session snapshots |
+| Gate | `lib/gate.mjs` `lib/pending.mjs` `lib/review/` | Hard rules → model review (`workspace/generateText`) → pending, waiting for a human |
+| Shell | `bin/zcode-executor` `lib/cli/` `skills/zcode-executor/` `templates/` `hooks/` `types/` | CLI and skill; `hooks/` is the watch-pane mod that only takes effect inside Claude Code (decisions D22) — its runtime has no Node and does not import `lib/`, data comes only from the `watch` subcommand; `types/` holds the type declarations of the mod state, checked by `claude plugin validate`. MCP shell to be added later as needed |
 
-跨层共用的只有 `lib/errors.mjs`（`ExecutorError`）。
+The only cross-layer shared module is `lib/errors.mjs` (`ExecutorError`).
 
-项目只接 zcode，协议层直接说 app-server 的 JSON-RPC，中间没有 ACP。
+The project targets zcode only; the protocol layer speaks the app-server's JSON-RPC directly, with no ACP in between.
 
-## 硬约束
+## Hard constraints
 
-- 验证协议先走零 token 路径（握手、create、list、close）。每一次 `session/send` 花真实额度。
-- 模型审批只产出放行或转人工；拒绝同样退回人工。人工由 Claude 用 AskUserQuestion 转交。
-- 用词照 `CONTEXT.md`：会话、任务单、投递、回合、审批请求、提问、红线、模型审批、挂起、模型等级、思考等级。
-- 纯 `.mjs`，零运行时依赖，不加构建。
-- `~/.zcode/v2/config.json` 与 `~/.zcode/v2/credentials.json` 只读：前者有明文 API key、App 会重写它；后者是 App 的加密凭据，只解账号型 coding plan 要的四个键（D19）和闲时投递要的 `zcodejwttoken`（D20）。两处读到的 key 只落 D14 的临时个人 provider 文件；JWT 只进内存与 JSON-RPC 参数，不落盘。
-- 从 zcode-acp 搬来的代码保留 Apache-2.0 版权声明，记入 `NOTICE`。
-- 排障看 `~/.zcode/cli/log/zcode-YYYY-MM-DD.jsonl`。JSON-RPC 错误的细节在 `error.data.details`，`message` 只有一句概括。
-- DSH 插件定义在根 `package.json`（`dsh` 字段 + `cordis.patch.yml`），npm 包名即插件，桌面端插件页直装；`dsh-plugin/` 是其 TypeScript 源码与构建产物（lib 入库），2026-10-11 subtree 并入，旧 Gitea 仓库冻结。与 CLI 唯一耦合是 `watch --json` 行协议。开发、测试见其 [docs/dsh-plugin.md](docs/dsh-plugin.md) 与目录内 README；peer 依赖全部 optional，CLI 全局安装保持零依赖。
+- Verify the protocol through the zero-token path first (handshake, create, list, close). Every `session/send` spends real quota.
+- Model review only produces allow or escalate-to-human; a denial likewise returns to the human. The human handoff goes through Claude with AskUserQuestion.
+- Terminology follows `CONTEXT.md`: session, task file, dispatch, turn, approval request, question, hard rule, model review, pending, model tier, thought level.
+- Pure `.mjs`, zero runtime dependencies, no build step.
+- `~/.zcode/v2/config.json` and `~/.zcode/v2/credentials.json` are read-only: the former holds plaintext API keys and the App rewrites it; the latter holds the App's encrypted credentials — only the four keys the account-type coding plan needs (D19) and the `zcodejwttoken` for off-peak sends (D20) are decrypted. Keys read from either place only land in D14's temporary personal provider file; the JWT stays in memory and JSON-RPC parameters, never on disk.
+- Code ported from zcode-acp keeps its Apache-2.0 copyright notice, recorded in `NOTICE`.
+- For troubleshooting read `~/.zcode/cli/log/zcode-YYYY-MM-DD.jsonl`. JSON-RPC error details live in `error.data.details`; `message` is only a one-line summary.
+- The DSH plugin is defined in the root `package.json` (`dsh` field + `cordis.patch.yml`); the npm package name is the plugin, installed straight from the desktop app's plugin page; `dsh-plugin/` is its TypeScript source and build output (lib is checked in), subtree-merged on 2026-10-11, the old Gitea repo is frozen. Its only coupling to the CLI is the `watch --json` line protocol. Development and testing: see its [docs/dsh-plugin.md](docs/dsh-plugin.md) and the in-directory README; peer dependencies are all optional, keeping the global CLI install at zero dependencies.
 
-## 发版
+## Releases
 
-版本号只在 `package.json` 里改，其余位置（两份 README 的版本徽章、`.claude-plugin/plugin.json`、`.codex-plugin/plugin.json`、
-`.github/plugin/plugin.json`、`.grok-plugin/plugin.json`、`.antigravity-plugin/plugin.json`、`gemini-extension.json`、`plugin.yaml`）由 `scripts/sync-doc-version.mjs` 同步，
-挂在 npm 的 `version` 生命周期脚本上；`npm test` 里的 `--check` 漏同步就挂。文档里的标记挪了位置要改那个脚本，找不到标记它直接非零退出。
-两份 README 测试徽章里的用例数不在同步范围，用例数变了要手改（还有 README「开发」一节和本文件开头的状态行）。
+The version number changes only in `package.json`; everywhere else (the version badges in the three READMEs, `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`,
+`.github/plugin/plugin.json`, `.grok-plugin/plugin.json`, `.antigravity-plugin/plugin.json`, `gemini-extension.json`, `plugin.yaml`) is synced by `scripts/sync-doc-version.mjs`,
+hooked to npm's `version` lifecycle script; `npm test`'s `--check` fails if a sync is missed. If a marker in the docs moves, update that script — a missing marker makes it exit non-zero.
+The test-count badges in the READMEs are not in sync scope; when the case count changes, update them by hand (plus the README "Development" section and the status line at the top of this file).
 
 ```sh
-npm version patch      # 改 package.json + 同步版本号 + 建 commit 和 v* tag；加功能用 minor
-git push --follow-tags # 推 tag 才是触发器
+npm version patch      # bumps package.json + syncs version numbers + creates the commit and v* tag; use minor for features
+git push --follow-tags # pushing the tag is the trigger
 ```
 
-`.github/workflows/publish.yml` 按 tag 跑：测试 → tag 与 package.json 版本一致 → `npm publish`
-（Trusted Publishing，OIDC 无令牌）→ 建 GitHub Release（`--generate-notes`，提交信息就是 changelog）。
-人工配置只有一处：npmjs.com 包设置里登记可信发布者 `kyomio/zcode-executor` + 文件名 `publish.yml`。
-`ci.yml` 在推 main 和 PR 时跑测试（Node 22 与 24）。
+`.github/workflows/publish.yml` runs per tag: tests → tag matches the package.json version → `npm publish`
+(Trusted Publishing, OIDC, no token) → creates the GitHub Release (`--generate-notes`, commit messages are the changelog).
+The only manual configuration: registering the trusted publisher `kyomio/zcode-executor` + filename `publish.yml` in the npmjs.com package settings.
+`ci.yml` runs the tests on pushes to main and on PRs (Node 22 and 24).
 
-## 何时读什么
+## What to read when
 
-- 要做什么、CLI 长什么样、闸门怎么走 → [docs/PRD.md](docs/PRD.md)；实现与测试决定、用户故事 → [docs/SPEC.md](docs/SPEC.md)
-- 写代码前 → [docs/RULES.md](docs/RULES.md)（风格、注释、输出、落盘、测试、提交）
-- 现在做到哪、下一件是什么 → `docs/PLAN.md`（本地记录，不进仓库）
-- 接手开发、看背景 → `docs/handoff/handoff-20260908.md`（本地记录，不进仓库）
-- 改插件清单、marketplace、安装方式 → 记忆库里「Claude 插件 marketplace 规范」（`search_memories`），官方页面 code.claude.com/docs/en/plugins-reference
-- 写协议层，或碰到 app-server 的方法、事件、反向请求 → [docs/reference/zcode-app-server-protocol.md](docs/reference/zcode-app-server-protocol.md)，再对照 [docs/verified.md](docs/verified.md) 里的本机实测
-- 想改定位、换协议、放宽审批、改名 → 先读 [docs/decisions.md](docs/decisions.md) 里的理由
-- 需要参考实现 → docs/decisions.md D2 提到的 zcode-acp（`npm pack zcode-acp-server`）
+- What it should do, what the CLI looks like, how the gate flows → [docs/PRD.md](docs/PRD.md); implementation and testing decisions, user stories → [docs/SPEC.md](docs/SPEC.md)
+- Before writing code → [docs/RULES.md](docs/RULES.md) (style, comments, output, persistence, tests, commits)
+- Where things stand, what's next → `docs/PLAN.md` (local record, not in the repo)
+- Taking over development, background → `docs/handoff/handoff-20260908.md` (local record, not in the repo)
+- Changing plugin manifests, the marketplace, install methods → the memory bank's "Claude plugin marketplace spec" entry (`search_memories`), official page code.claude.com/docs/en/plugins-reference
+- Writing the protocol layer, or facing app-server methods, events, reverse requests → [docs/reference/zcode-app-server-protocol.md](docs/reference/zcode-app-server-protocol.md), cross-checked against the measured facts in [docs/verified.md](docs/verified.md)
+- Wanting to change the positioning, swap the protocol, loosen review, rename → read the reasoning in [docs/decisions.md](docs/decisions.md) first
+- Need a reference implementation → zcode-acp, mentioned in docs/decisions.md D2 (`npm pack zcode-acp-server`)

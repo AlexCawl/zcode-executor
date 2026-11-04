@@ -1,50 +1,54 @@
-# dsh-plugin/ — DSH 侧插件
+# dsh-plugin/ — DSH-side plugin
 
-DSH（DeepSeek Harness）半边把本仓库的 CLI 接进 DSH：派单教学（SKILL.md + system prompt 公告）
-+ 官方右侧栏「zcode 任务」观察面板（约 1 秒自刷、零额度、只看不答）。
+English · [中文](dsh-plugin.zh-CN.md) · [Русский](dsh-plugin.ru.md)
 
-**插件定义在仓库根**：根 `package.json` 的 `dsh` 字段 + 根 `cordis.patch.yml`（行 id `zcode-executor`），
-npm 包 `zcode-executor` 本身就是 DSH 插件——桌面端插件页按包名安装，App 自动登记 bundle，
-不用 `link:`、不用手改 profile 配置。npm tarball 经根 `files` 带 `cordis.patch.yml` 与
-`dsh-plugin/lib`（构建产物）；peer 依赖全部 optional，CLI 全局安装仍保持零依赖
-（DSH 侧运行时由宿主供给）。`test/dsh-manifest.test.mjs` 守卫这份定义不漂移。
+The DSH (DeepSeek Harness) side connects this repository's CLI to DSH: dispatch instructions (SKILL.md + a system prompt announcement)
++ the official right-sidebar watch pane named “zcode 任务” (“zcode tasks”; refreshes about once a second, uses no quota, view-only).
 
-`dsh-plugin/` 只是**源码与构建产物**（TypeScript + pnpm 独立包），2026-10-11 用 `git subtree`
-从独立仓库（Gitea `kyomio/dsh-zcode-executor`）并入，完整历史保留；旧仓库冻结。
-与 CLI 的**唯一耦合面**是 `zcode-executor watch --json` 的 NDJSON 行协议。
+**The plugin definition is at the repository root**: the `dsh` field in the root `package.json` + the root `cordis.patch.yml` (row id `zcode-executor`).
+The npm package `zcode-executor` itself is the DSH plugin: install it by package name on the desktop app's plugin page, and the App registers the bundle automatically.
+No `link:` and no manual profile configuration edits. The root `files` list includes `cordis.patch.yml` and
+`dsh-plugin/lib` (build output) in the npm tarball; every peer dependency is optional, so a global CLI installation still has zero dependencies
+(the host supplies the DSH-side runtime). `test/dsh-manifest.test.mjs` guards this definition against drift.
 
-## 目录速览
+`dsh-plugin/` contains only **source and build output** (TypeScript + an independent pnpm package). It was merged on 2026-10-11 using `git subtree`
+from a separate repository (Gitea `kyomio/dsh-zcode-executor`), preserving its complete history; the old repository is frozen.
+Its **only coupling to the CLI** is the NDJSON line protocol of `zcode-executor watch --json`.
 
-| 路径 | 内容 |
+## Directory overview
+
+| Path | Contents |
 | --- | --- |
-| `dsh-plugin/src/` | TypeScript 源码：index（cordis 插件入口）、routes（NDJSON 流路由）、watch-process、bridge（zen-remote 插件桥）、skill-link（`~/.dsh/skills` 软链）、client/（React 面板） |
-| `dsh-plugin/lib/` | 构建产物（tsc + `build-client.mjs` 内联打包），**入库**、随 npm 包发布 |
-| `dsh-plugin/skills/zcode-executor/` | 只有一条 SKILL.md **软链**指向根 `skills/zcode-executor/SKILL.md`（单一事实源；npm 打包跳过软链，运行时由 skill-link 回退到根 skills/——两种布局都覆盖） |
-| `dsh-plugin/test/` | 112 个用例，全部用桩数据，不建 DSH 会话、不花 token |
-| `dsh-plugin/SPEC.md` / `README.md` | 规格全文（含测试决定与边界）/ 安装与架构 |
-| 根 `cordis.patch.yml` | bundle 注册补丁（**定义在根，不在 dsh-plugin/**） |
+| `dsh-plugin/src/` | TypeScript source: index (cordis plugin entry), routes (NDJSON stream routes), watch-process, bridge (zen-remote plugin bridge), skill-link (`~/.dsh/skills` symlink), client/ (React pane) |
+| `dsh-plugin/lib/` | Build output (tsc + inline bundling by `build-client.mjs`), **tracked in git** and published with the npm package |
+| `dsh-plugin/skills/zcode-executor/` | A single SKILL.md **symlink** to the root `skills/zcode-executor/SKILL.md` (one source of truth; npm packaging skips symlinks, so skill-link falls back to the root skills/ at runtime, covering both layouts) |
+| `dsh-plugin/test/` | 112 cases, all using stubs; no DSH sessions created and no tokens spent |
+| `dsh-plugin/SPEC.md` / `README.md` | Full specification (including test decisions and boundaries) / installation and architecture |
+| Root `cordis.patch.yml` | Bundle registration patch (**defined at the root, not in dsh-plugin/**) |
 
-## 开发与测试
+## Development and testing
 
 ```sh
 cd dsh-plugin
-pnpm install        # peer/dev 依赖
-npm run build       # tsc 两套 tsconfig + build-client.mjs；产物 lib/ 入库
-npm run verify      # 只类型检查
-node --test test    # 112 个用例（根目录 npm test 不含它——插件要 pnpm 依赖，保持根测试零依赖）
+pnpm install        # peer/dev dependencies
+npm run build       # tsc with two tsconfig files + build-client.mjs; lib/ output is tracked
+npm run verify      # type checking only
+node --test test    # 112 cases (not included in root npm test: the plugin needs pnpm dependencies; root tests remain dependency-free)
 ```
 
-改插件代码后要重启 DSH 桌面端才生效；`npm run preview` 起本地面板预览（mockup 数据）。
+Restart the DSH desktop app after changing plugin code for changes to take effect; `npm run preview` starts a local pane preview with mockup data.
 
-## 发版
+## Releases
 
-无独立版本号：随主包走 `npm version` + tag → `publish.yml` 发 npm，插件代码跟着 tarball 走。
-改插件后记得 `npm run build`（lib 入库），`test/dsh-manifest.test.mjs` 会核对构建产物存在。
+There is no separate version: the plugin follows the main package's `npm version` + tag → `publish.yml` npm publication, and its code ships in the tarball.
+After changing the plugin, remember `npm run build` (lib is tracked); `test/dsh-manifest.test.mjs` checks that build outputs exist.
 
-## 同步上游
+## Syncing upstream
 
-旧仓库已冻结；若别处对插件有更新，用 subtree 拉入：
+The old repository is frozen. If plugin updates exist elsewhere, pull them in with subtree:
 
 ```sh
 git subtree pull --prefix=dsh-plugin <旧仓库路径或 remote> main
 ```
+
+`<旧仓库路径或 remote>` is the original placeholder for the old repository's path or remote.
