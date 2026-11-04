@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ExecutorError } from '../lib/errors.mjs';
-import { builtinRevision } from '../lib/offpeak-provider.mjs';
+import { builtinRevision } from '../lib/builtins.mjs';
 import {
   buildStartPlanAccountConfig,
   buildStartPlanSendParams,
@@ -91,7 +91,7 @@ test('startplan：send 参数与授权配置里查不到任何凭据形状的字
   assert.equal(/jwt|apiKey|requestAuth|Bearer/i.test(params), false);
 });
 
-test('startplan：builtinRevision 可从 offpeak-provider 复用（读真机形状的内置文件）', async () => {
+test('startplan：builtinRevision 可从 builtins 复用（读真机形状的内置文件）', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'zcode-startplan-test-'));
   dirs.push(dir);
   const file = path.join(dir, 'zcode-builtin.json');

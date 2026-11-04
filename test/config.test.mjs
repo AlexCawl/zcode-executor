@@ -44,8 +44,6 @@ test('loadConfig：没有配置文件时全默认', async () => {
     assert.equal(config.waitTimeoutSec, 3600);
     assert.equal(config.preferredProvider, undefined);
     assert.deepEqual(config.tiers, {});
-    assert.deepEqual(config.environment, []);
-    assert.deepEqual(config.sensitive, []);
     assert.deepEqual(config.warnings, []);
   } finally {
     await rm(home, { recursive: true, force: true });
@@ -92,8 +90,6 @@ test('loadConfig：有文件时合并；allowedRoots 的 ~ 展开成绝对路径
         waitTimeoutSec: 60,
         preferredProvider: 'my-plan',
         tiers: { fast: 'GLM-5.3' },
-        environment: ['env note'], // 自由文字，不做 ~ 展开
-        sensitive: ['~/secrets'],
       }),
     );
     const config = loadConfig(home);
@@ -102,8 +98,6 @@ test('loadConfig：有文件时合并；allowedRoots 的 ~ 展开成绝对路径
     assert.equal(config.waitTimeoutSec, 60);
     assert.equal(config.preferredProvider, 'my-plan');
     assert.deepEqual(config.tiers, { fast: 'GLM-5.3' });
-    assert.deepEqual(config.environment, ['env note']);
-    assert.deepEqual(config.sensitive, ['~/secrets']);
   } finally {
     await rm(home, { recursive: true, force: true });
   }
@@ -163,154 +157,4 @@ test('writeJsonAtomic：临时文件名猜不到——别人预先放在旧名�
   assert.equal((await lstat(predictable)).isSymbolicLink(), true, '不是自己建的文件不动它');
 });
 
-test('loadConfig：review.slowMaxTokens 校验——正数收下、非法抛 ExecutorError(1)', async () => {
-  const home = await tmp('zcode-config-test-');
-  try {
-    await writeFile(path.join(home, 'config.json'), JSON.stringify({ review: { slowMaxTokens: 1500 } }));
-    const config = loadConfig(home);
-    assert.equal(config.review.slowMaxTokens, 1500); // T3.3：慢判预算可配
 
-    await writeFile(path.join(home, 'config.json'), JSON.stringify({ review: { slowMaxTokens: 0 } }));
-    assert.throws(() => loadConfig(home), ExecutorError);
-    await writeFile(path.join(home, 'config.json'), JSON.stringify({ review: { slowMaxTokens: 'abc' } }));
-    assert.throws(() => loadConfig(home), ExecutorError);
-  } finally {
-    await rm(home, { recursive: true, force: true });
-  }
-});
-
-test('loadConfig：0600 config 里的 review.jev.apiKey 启用 Jev，密钥原值不 trim', async () => {
-  const home = await tmp('zcode-config-jev-');
-  const configPath = path.join(home, 'config.json');
-  await writeFile(configPath, JSON.stringify({ review: { jev: { apiKey: '  jev_test_secret  ' } } }), { mode: 0o600 });
-
-  const config = loadConfig(home);
-  assert.equal(config.review.jev.apiKey, '  jev_test_secret  ');
-  assert.equal(config.warnings.some((warning) => warning.includes('jev')), false);
-});
-
-test('loadConfig：review.jev.apiKey 缺失或全空白时回退，旧配置不增加权限门槛', async () => {
-  const home = await tmp('zcode-config-jev-');
-  const configPath = path.join(home, 'config.json');
-  await writeFile(configPath, JSON.stringify({ review: { thought: 'low' } }), { mode: 0o644 });
-  assert.equal(loadConfig(home).review.jev.apiKey, undefined);
-
-  await writeFile(configPath, JSON.stringify({ review: { jev: { apiKey: '   ' } } }), { mode: 0o644 });
-  assert.equal(loadConfig(home).review.jev.apiKey, undefined);
-});
-
-test('loadConfig：含 Jev key 的 config 权限宽于 0600 时拒绝且不泄漏 key', async () => {
-  const home = await tmp('zcode-config-jev-');
-  const configPath = path.join(home, 'config.json');
-  const secret = 'jev_never_print_this';
-  await writeFile(configPath, JSON.stringify({ review: { jev: { apiKey: secret } } }), { mode: 0o600 });
-  await chmod(configPath, 0o644);
-
-  assert.throws(() => loadConfig(home), (err) => {
-    assert.ok(err instanceof ExecutorError);
-    assert.equal(err.exitCode, 1);
-    assert.match(err.message, /chmod 600/);
-    assert.ok(err.message.includes(configPath));
-    assert.equal(err.message.includes(secret), false);
-    return true;
-  });
-});
-
-test('loadConfig：含 Jev key 的 config 是符号链接时拒绝且不泄漏 key', async () => {
-  const home = await tmp('zcode-config-jev-');
-  const target = path.join(home, 'real-config.json');
-  const configPath = path.join(home, 'config.json');
-  const secret = 'jev_symlink_secret';
-  await writeFile(target, JSON.stringify({ review: { jev: { apiKey: secret } } }), { mode: 0o600 });
-  await symlink(target, configPath);
-
-  assert.throws(() => loadConfig(home), (err) => {
-    assert.ok(err instanceof ExecutorError);
-    assert.equal(err.exitCode, 1);
-    assert.match(err.message, /符号链接|普通文件/);
-    assert.equal(err.message.includes(secret), false);
-    return true;
-  });
-});
-
-test('loadConfig：review.jev 未知字段给 warning 但不泄漏 key', async () => {
-  const home = await tmp('zcode-config-jev-');
-  const configPath = path.join(home, 'config.json');
-  const secret = 'jev_warning_secret';
-  await writeFile(configPath, JSON.stringify({ review: { jev: { apiKey: secret, timeoutMs: 3 } } }), { mode: 0o600 });
-
-  const config = loadConfig(home);
-  assert.equal(config.review.jev.apiKey, secret);
-  assert.equal(config.warnings.length, 1);
-  assert.match(config.warnings[0], /review\.jev.*timeoutMs/);
-  assert.equal(config.warnings[0].includes(secret), false);
-});
-
-test('loadConfig：review.jev 与 apiKey 类型错误时拒绝且错误不序列化整个配置', async () => {
-  const home = await tmp('zcode-config-jev-');
-  const configPath = path.join(home, 'config.json');
-  await writeFile(configPath, JSON.stringify({ review: { jev: 'bad' } }), { mode: 0o600 });
-  assert.throws(() => loadConfig(home), (err) => err instanceof ExecutorError && /review\.jev/.test(err.message));
-
-  const secret = { nested: 'jev_object_secret' };
-  await writeFile(configPath, JSON.stringify({ review: { jev: { apiKey: secret } } }), { mode: 0o600 });
-  assert.throws(() => loadConfig(home), (err) => {
-    assert.ok(err instanceof ExecutorError);
-    assert.match(err.message, /review\.jev\.apiKey/);
-    assert.equal(err.message.includes(secret.nested), false);
-    return true;
-  });
-});
-
-test('loadConfig：review.jev.proxy 接受 http(s) 地址并归一化；只配代理不配 key 时提醒不生效', async () => {
-  const home = await tmp('zcode-config-jev-');
-  const configPath = path.join(home, 'config.json');
-  await writeFile(configPath, JSON.stringify({
-    review: { jev: { apiKey: 'jev_proxy_secret', proxy: ' http://user:pass@127.0.0.1:8080 ' } },
-  }), { mode: 0o600 });
-
-  const config = loadConfig(home);
-  assert.equal(config.review.jev.proxy, 'http://user:pass@127.0.0.1:8080/');
-  assert.equal(config.warnings.some((warning) => warning.includes('review.jev')), false); // proxy 是认识的新键
-
-  // 只有代理没有 key：Jev 未启用，提醒代理不会使用（D24 启用契约不变）
-  await writeFile(configPath, JSON.stringify({ review: { jev: { proxy: 'http://127.0.0.1:8080' } } }), { mode: 0o600 });
-  const proxyOnly = loadConfig(home);
-  assert.equal(proxyOnly.review.jev.apiKey, undefined);
-  assert.equal(proxyOnly.review.jev.proxy, 'http://127.0.0.1:8080/');
-  assert.ok(proxyOnly.warnings.some((warning) =>
-    warning.includes('review.jev.proxy') && warning.includes('apiKey')));
-});
-
-test('loadConfig：review.jev.proxy 非法时拒绝且不回显可能含凭据的原值', async () => {
-  const home = await tmp('zcode-config-jev-');
-  const configPath = path.join(home, 'config.json');
-  for (const bad of [123, '   ', 'socks5://user:secret@127.0.0.1:1080']) {
-    await writeFile(configPath, JSON.stringify({ review: { jev: { apiKey: 'k', proxy: bad } } }), { mode: 0o600 });
-    assert.throws(() => loadConfig(home), (err) => {
-      assert.ok(err instanceof ExecutorError);
-      assert.equal(err.exitCode, 1);
-      assert.match(err.message, /review\.jev\.proxy/);
-      assert.equal(err.message.includes('secret'), false);
-      return true;
-    });
-  }
-});
-
-test('loadConfig：review.jev.model 接受非空字符串并 trim；空白与对象拒绝（D25）', async () => {
-  const home = await tmp('zcode-config-jev-');
-  const configPath = path.join(home, 'config.json');
-  await writeFile(configPath, JSON.stringify({ review: { jev: { apiKey: 'k', model: ' jev-1.14.0 ' } } }), { mode: 0o600 });
-  assert.equal(loadConfig(home).review.jev.model, 'jev-1.14.0');
-
-  for (const bad of ['', '   ', 123]) {
-    await writeFile(configPath, JSON.stringify({ review: { jev: { apiKey: 'k', model: bad } } }), { mode: 0o600 });
-    assert.throws(() => loadConfig(home), (err) => err instanceof ExecutorError && /review\.jev\.model/.test(err.message));
-  }
-
-  // 只配 model 不配 key：与 proxy 同一提醒口径
-  await writeFile(configPath, JSON.stringify({ review: { jev: { model: 'jev-latest' } } }), { mode: 0o600 });
-  const modelOnly = loadConfig(home);
-  assert.equal(modelOnly.review.jev.apiKey, undefined);
-  assert.ok(modelOnly.warnings.some((warning) => warning.includes('review.jev.model') && warning.includes('apiKey')));
-});

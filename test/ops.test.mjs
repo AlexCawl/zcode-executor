@@ -718,13 +718,13 @@ test('结束摘要：闸门计数与文件/Bash 统计进人读输出（T2.8 第
   runBin(env.env, ['send', env.entry.id, '带闸门的活']);
   await waitFor(async () => (existsSync(path.join(env.runsDir, 'pending.json')) ? true : undefined));
   trackRunnerPids(env.runsDir);
-  // 挂起期间补本回合的合成事件：runner 的闸门已真实写了一条 review-disabled ask，
-  // 再补红线挂起、快筛放行、慢判放行、慢判转人工，以及带 toolCallId/input 的工具事件
+  // 挂起期间补本回合的合成事件：runner 的闸门已真实写了一条 manual ask（无模型审批，转人工），
+  // 再补红线挂起、两条放行、一条转人工，以及带 toolCallId/input 的工具事件
   const lines = [
     { type: 'executor.gate', stage: 'hard', decision: 'ask', ruleId: 'r1', reason: '越界' },
-    { type: 'executor.gate', stage: 'review-fast', decision: 'allow', reason: '快筛过' },
-    { type: 'executor.gate', stage: 'review-slow', decision: 'allow', reason: '慢判过' },
-    { type: 'executor.gate', stage: 'review-slow', decision: 'ask', reason: '判不下' },
+    { type: 'executor.gate', stage: 'manual', decision: 'allow', reason: '人工批了' },
+    { type: 'executor.gate', stage: 'manual', decision: 'allow', reason: '人工又批了' },
+    { type: 'executor.gate', stage: 'manual', decision: 'ask', reason: '判不下' },
     { type: 'tool.updated', payload: { toolCallId: 't1', toolName: 'Write', kind: 'scheduled', input: { file_path: 'src/a.ts' } } },
     { type: 'tool.updated', payload: { toolCallId: 't1', toolName: 'Write', kind: 'started', input: { file_path: 'src/a.ts' } } },
     { type: 'tool.updated', payload: { toolCallId: 't1', kind: 'result' } },
@@ -750,8 +750,8 @@ test('结束摘要：闸门计数与文件/Bash 统计进人读输出（T2.8 第
   await waitFor(async () => (existsSync(path.join(env.runsDir, 'pending.json')) ? undefined : true));
   const follow = runBin(env.env, ['follow', env.entry.id]);
   assert.equal(follow.status, 0, `stderr: ${follow.stderr}`);
-  // allow = 快筛 1 + 慢判 1；ask = 真实 review-disabled 1 + 红线 1 + 慢判 1
-  assert.match(follow.stdout, /闸门：放行 2 次（红线挂起 1、快筛 1、慢判 2、转人工 3）/);
+  // allow = 人工批的 2 条；ask = 真实 manual 1 + 合成 manual 1 + 红线那条也是 ask（与旧口径一致，红线在两个计数里都出现）
+  assert.match(follow.stdout, /闸门：放行 2 次（红线挂起 1、转人工 3）/);
   // a.ts 由 Write/Edit 共用去重、b.ts 来自 inputOmitted 的兜底；Bash t4 两次是同一次调用
   assert.match(follow.stdout, /改动：a\.ts、b\.ts；Bash 2 条/);
 });
@@ -777,7 +777,7 @@ test('结束摘要 --json：文件去重且最多 10 个（T2.8 第 1 条）', a
   assert.deepEqual(out.summary.files.slice(0, 4), ['f0.ts', 'f1.ts', 'f2.ts', 'f3.ts']);
   assert.ok(out.summary.files.every((f, i, a) => a.indexOf(f) === i)); // 去重
   assert.equal(out.summary.bashCount, 0);
-  assert.deepEqual(out.summary.gate, { allow: 0, ask: 0, hard: 0, fast: 0, slow: 0 }); // 没进闸门全是 0
+  assert.deepEqual(out.summary.gate, { allow: 0, ask: 0, hard: 0 }); // 没进闸门全是 0
 });
 
 test('结束摘要：inputOmitted 用 permission.requested 的 input 兜底（T2.8 第 1 条）', async (t) => {

@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { AppServerClient } from '../lib/appserver.mjs';
 import { attachSession, settleTurn } from '../lib/session.mjs';
-import { buildOffPeakAccountConfig, builtinRevision } from '../lib/offpeak-provider.mjs';
+import { builtinRevision } from '../lib/builtins.mjs';
 import { startMock, waitFor, readRecord, killAll } from './helpers.mjs';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -49,12 +49,17 @@ async function withSession(script, opts, fn) {
       onEvent: opts.onEvent,
       secrets: opts.secrets,
     });
-    // 闲时回合要先推授权（mock 照真机：没推或版本号不对，回合报 provider_not_found）
+    // 授权账号型改道回合（mock 照真机：没推或版本号不对，回合报 provider_not_found）。
+    // 形状沿用闲时探针记下的账号配置（本 fork 移除了闲时投递，这里字面构造，测的是
+    // session/send 的 extraParams 合并与脱敏，不是闲时通道本身）
     if (opts.authorizeOffPeak) {
-      await client.request(
-        'provider/updateAccountConfig',
-        buildOffPeakAccountConfig({ family: 'bigmodel', basedOnZCodeBuiltinRevision: builtinRevision(mock.env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE) }),
-      );
+      const providerId = 'account:bigmodel-offpeak-idle-plan';
+      await client.request('provider/updateAccountConfig', {
+        revision: `zcode-executor-test:${Date.now()}`,
+        basedOnZCodeBuiltinRevision: builtinRevision(mock.env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE),
+        providers: { [providerId]: { access: { type: 'zhipu-account', entitled: true } } },
+        states: { [providerId]: { availability: 'available', entitled: true, current: true } },
+      });
     }
     return await fn({ session, eventsPath, recordPath: mock.recordPath, client, stderrLines });
   } finally {

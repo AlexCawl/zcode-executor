@@ -420,84 +420,17 @@ test('doctor：正常 → 退出码 0，--json 里有内置文件、apiKey 在�
   assert.match(out.handshake.warnings[0], /credentials\.json 不存在/);
 });
 
-test('doctor：配置 review.jev.apiKey 时只报告已配置与新 runner 使用 Jev，不泄漏密钥', async () => {
-  const secret = 'jev_doctor_secret_never_print';
-  const { run, recordPath } = await runCli(['doctor', '--json'], {
-    executorConfig: { review: { jev: { apiKey: secret } } },
-  });
-  assert.equal(run.status, 0, `stderr: ${run.stderr}`);
-  const out = JSON.parse(run.stdout);
-  assert.deepEqual(out.review, { enabled: true, fastScreen: 'jev', jevConfigured: true, pipeline: ['jev', 'zcode-fast', 'zcode-slow'] });
-  assert.equal(run.stdout.includes(secret), false);
-  assert.equal(run.stderr.includes(secret), false);
-  const methods = readRecord(recordPath).map((message) => message.method).filter(Boolean);
-  assert.deepEqual([...new Set(methods)].sort(), ['session/close', 'session/create']);
-
-  const plain = await runCli(['doctor'], {
-    executorConfig: { review: { jev: { apiKey: secret } } },
-  });
-  assert.equal(plain.run.status, 0, `stderr: ${plain.run.stderr}`);
-  assert.match(plain.run.stdout, /Jev 前筛 → ZCode 快筛 → 慢判/);
-  assert.equal(`${plain.run.stdout}${plain.run.stderr}`.includes(secret), false);
-});
-
-test('doctor：未配置 Jev key 时报告新 runner 使用 ZCode 快筛', async () => {
-  const { run } = await runCli(['doctor', '--json']);
-  assert.equal(run.status, 0, `stderr: ${run.stderr}`);
-  assert.deepEqual(JSON.parse(run.stdout).review, {
-    enabled: true,
-    fastScreen: 'zcode',
-    jevConfigured: false,
-    pipeline: ['zcode-fast', 'zcode-slow'],
-  });
-});
-
-test('doctor：review.enabled:false 报模型审批关闭，不误报会使用 Jev', async () => {
-  const secret = 'jev_disabled_secret_never_print';
-  const jsonRun = await runCli(['doctor', '--json'], {
-    executorConfig: { review: { enabled: false, jev: { apiKey: secret } } },
-  });
-  assert.equal(jsonRun.run.status, 0, `stderr: ${jsonRun.run.stderr}`);
-  assert.deepEqual(JSON.parse(jsonRun.run.stdout).review, {
-    enabled: false,
-    fastScreen: null,
-    jevConfigured: true,
-    pipeline: [],
-  });
-  assert.equal(`${jsonRun.run.stdout}${jsonRun.run.stderr}`.includes(secret), false);
-
-  const plain = await runCli(['doctor'], {
-    executorConfig: { review: { enabled: false, jev: { apiKey: secret } } },
-  });
-  assert.equal(plain.run.status, 0, `stderr: ${plain.run.stderr}`);
-  assert.match(plain.run.stdout, /模型审批：关闭/);
-  assert.doesNotMatch(plain.run.stdout, /将使用 Jev|将使用 ZCode/);
-  assert.equal(`${plain.run.stdout}${plain.run.stderr}`.includes(secret), false);
-});
-
-test('doctor：插件配置错误时审批链不可确定，不虚报 ZCode', async () => {
-  const { run } = await runCli(['doctor', '--json'], {
-    executorConfig: { review: { jev: { apiKey: 123 } } },
-  });
-  assert.equal(run.status, 1);
-  assert.deepEqual(JSON.parse(run.stdout).review, {
-    enabled: null, fastScreen: null, jevConfigured: null, pipeline: null,
-  });
-});
-
-test('doctor：人读输出——① 一行、② 账号型与 config.json 两行加选中一行、③④⑤ 各一行', async () => {
+test('doctor：人读输出——① 一行、② 账号型与 config.json 两行加选中一行、③ 一行', async () => {
   const { run, mock } = await runCli(['doctor']);
   assert.equal(run.status, 0, `stderr: ${run.stderr}`);
   const lines = run.stdout.split('\n').filter((l) => l.trim());
-  assert.equal(lines.length, 7); // T6-C 起 ② 拆成账号型 + config.json 两行，选中单独一行；OP3 加 ⑤ 闲时一行
+  assert.equal(lines.length, 5); // T6-C 起 ② 拆成账号型 + config.json 两行，选中单独一行
   assert.match(lines[0], /doctor ① zcode：版本 0\.16\.5，内置 provider 文件 /);
   assert.ok(lines[0].includes(mock.env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE), lines[0]);
   assert.match(lines[1], /doctor ② 账号型 coding plan：未登录（credentials\.json 不存在）/);
   assert.match(lines[2], /doctor ② config\.json：2 个可用 provider（备用来源）/);
   assert.match(lines[3], /doctor ② 选中 builtin:bigmodel-coding-plan（apiKey 在）/);
   assert.match(lines[4], /doctor ③ 握手：选中 builtin:bigmodel-coding-plan/);
-  assert.match(lines[5], /doctor ④ 模型审批：开启，新启动 runner 将使用 ZCode 快筛/);
-  assert.match(lines[6], /doctor ⑤ 闲时：不适用（没找到 ZCode 凭据文件/); // 夹具没登录，不碰闲时服务器
 });
 
 test('doctor：选中的 provider 没有明文 apiKey → ② 先报「apiKey 不在」，③ 失败，退出码 1（断粮预警）', async () => {
