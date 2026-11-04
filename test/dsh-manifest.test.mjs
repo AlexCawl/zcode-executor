@@ -13,6 +13,10 @@ import { fileURLToPath } from 'node:url';
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
 
+// lib/ 不入库：CI 在测试前构建；本地没构建过就跳过读产物的用例，先 cd dsh-plugin && npm run build
+const built = existsSync(path.join(root, 'dsh-plugin', 'lib'));
+const buildFirst = { skip: !built && 'dsh-plugin/lib 未构建（cd dsh-plugin && pnpm install && npm run build）' };
+
 test('根 package.json 带 DSH 插件定义，且 patch 文件在包根', () => {
   assert.ok(pkg.dsh?.bundle?.patch, '缺少 dsh.bundle.patch');
   assert.equal(pkg.dsh.client.platform, 'web');
@@ -29,7 +33,7 @@ test('patch insert 的 name 是可 import 的 npm 包名（加载器按它 impor
   }
 });
 
-test('bundle 入口与 client 入口指向已构建的产物', () => {
+test('bundle 入口与 client 入口指向已构建的产物', buildFirst, () => {
   assert.equal(pkg.main, 'dsh-plugin/lib/index.js');
   for (const key of ['.', './client']) {
     const target = pkg.exports?.[key]?.default;
@@ -48,7 +52,7 @@ function clientRegistration(source) {
   return registrations[0];
 }
 
-test('发布的客户端工厂以根包名注册，和 patch import 的模块一致', () => {
+test('发布的客户端工厂以根包名注册，和 patch import 的模块一致', buildFirst, () => {
   const source = readFileSync(path.join(root, pkg.exports['./client'].default), 'utf8');
   assert.equal(clientRegistration(source).id, pkg.name);
 });

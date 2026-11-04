@@ -89,7 +89,7 @@ claude plugin install zcode-executor@zcode-executor --scope user
 
 ### DeepSeek Harness（DSH）
 
-npm 包本身就是 DSH 插件：根 `package.json` 带着 `dsh` 定义（`cordis.patch.yml` bundle + 右侧栏客户端），插件代码是 `dsh-plugin/lib/` 的构建产物（源码见 [dsh-plugin/](dsh-plugin/README.md)）。在 DSH 桌面端的插件页直接按 npm 包名 `zcode-executor` 安装即可——App 会自动登记 bundle，不需要手动 `link:` 或改配置文件。插件会教 DSH 智能体走完整派单流程（skill 幂等软链进 `~/.dsh/skills/`），并把同一个实时观察面板放进官方右侧栏「zcode 任务」标签页，约 1 秒自刷、零额度。本地开发：在 `dsh-plugin/` 里 `pnpm install && npm run build`，再重启桌面端。
+npm 包本身就是 DSH 插件：根 `package.json` 带着 `dsh` 定义（`cordis.patch.yml` bundle + 右侧栏客户端），插件代码是 `dsh-plugin/lib/` 的构建产物（源码见 [dsh-plugin/](dsh-plugin/README.md)；产物不入库，CI 在测试与发布前构建）。在 DSH 桌面端的插件页直接按 npm 包名 `zcode-executor` 安装即可——App 会自动登记 bundle，不需要手动 `link:` 或改配置文件。插件会教 DSH 智能体走完整派单流程（skill 幂等软链进 `~/.dsh/skills/`），并把同一个实时观察面板放进官方右侧栏「zcode 任务」标签页，约 1 秒自刷、零额度。本地开发：在 `dsh-plugin/` 里 `pnpm install && npm run build`，再重启桌面端。
 
 ### Codex
 

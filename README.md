@@ -91,7 +91,7 @@ The plugin also ships a **Claude Code mod** (a module of function hooks, `hooks/
 
 ### DeepSeek Harness (DSH)
 
-The npm package **is** the DSH plugin: the root `package.json` carries the `dsh` definition (`cordis.patch.yml` bundle + right-sidebar client), and the plugin code is the built output under `dsh-plugin/lib/` (sources in [dsh-plugin/](dsh-plugin/README.md)). In the DSH desktop app's plugin page, just install by the npm package name `zcode-executor` — the app registers the bundle by itself; no manual `link:` or config editing. The plugin teaches the DSH agent the full dispatch flow (the skill auto-symlinks into `~/.dsh/skills/`) and adds the **"zcode 任务" tab** to the official right sidebar — the same live watch pane, refreshing about once a second at zero quota. Local development: `pnpm install && npm run build` inside `dsh-plugin/`, then restart the desktop app.
+The npm package **is** the DSH plugin: the root `package.json` carries the `dsh` definition (`cordis.patch.yml` bundle + right-sidebar client), and the plugin code is the build output under `dsh-plugin/lib/` (sources in [dsh-plugin/](dsh-plugin/README.md); the output itself is not tracked — CI builds it before tests and publish). In the DSH desktop app's plugin page, just install by the npm package name `zcode-executor` — the app registers the bundle by itself; no manual `link:` or config editing. The plugin teaches the DSH agent the full dispatch flow (the skill auto-symlinks into `~/.dsh/skills/`) and adds the **"zcode 任务" tab** to the official right sidebar — the same live watch pane, refreshing about once a second at zero quota. Local development: `pnpm install && npm run build` inside `dsh-plugin/`, then restart the desktop app.
 
 ### Kimi Work
 
