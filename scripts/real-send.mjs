@@ -1,24 +1,32 @@
-// 本文件负责：真机投递脚本（会花额度，由 Claude 跑）——读 provider 表、写个人 provider 文件、
-// 拉起 app-server、create 或 resume、attach 会话、投递一条正文、等回合结算并打印结果。
-// 不负责：闸门的红线与模型审批（这里的人肉 y/n 只是通道）、批量任务、pending 之外的落盘。
-// 用法：
-//   node scripts/real-send.mjs --yes [--cwd <目录>] [--text "<投递正文>"] [--resume <sess_>]
+// This file is responsible for: the real-device delivery script (spends quota; run by Claude) —
+// read the provider registry, write the personal provider file, spawn the app-server, create or
+// resume, attach the session, deliver one message, wait for the turn to settle, print the result.
+// Not responsible for: the gate's hard rules and model review (the manual y/n here is only a
+// channel), batch tasks, persisting anything beyond pending.
+// Usage:
+//   node scripts/real-send.mjs --yes [--cwd <dir>] [--text "<message>"] [--resume <sess_>]
 //        [--provider <providerId>] [--model <modelId>]
-//        [--on-permission allow|deny] [--on-question "<文字>"]
-//        [--steer-after <秒> [--steer-text "<插话>"]] [--stop-after <秒>]
-// --steer-after：投递 N 秒后在回合进行中插话（v4/command sendText guide，T6-B 检查点）；
-// --stop-after：投递 N 秒后发 session/stop 请求，核回合以 resultType=cancelled 结束（T6-A 检查点）。
-// create 默认带 model + 顶层 thoughtLevel（D14：3.12 起 create 不再接受 runtimeModel，也不再推表，
-// app-server 自己从个人 provider 文件读 provider 表）：provider 按 D6 优先级选（--provider 指定则
-// 必须命中），模型取该 provider 里 id 含 flash/lite/mini/air 的第一个、没有就第一个（--model 指定则
-// 必须存在）；--resume 不带 model（verified）。--provider/--model 校验在 mkdtemp、写个人文件、spawn
-// 之前，给错了直接退 2，不留临时目录、不起子进程。
-// RULES §9：跑前先提示会花额度，没有 --yes 直接退出码 2，不 spawn 任何东西。
-// 审批/提问的作答顺序：给了 --on-permission / --on-question 就用参数；没给且 stdin 是终端
-// 就交互问（空答案审批按 deny、提问抛错）；两者都没有 → 保留 pending.json、打印
-// {"outcome":"blocked",…}、退出码 5（T1.2b 第 2 条）。
-// stdout 每步一行 JSON，全部过 redactSecrets + scrubValues（apiKey 不出现在任何输出里）；个人
-// provider 文件在 finally 里 dispose（RULES §6：密钥只落这一个临时文件，收场即删）。
+//        [--on-permission allow|deny] [--on-question "<text>"]
+//        [--steer-after <seconds> [--steer-text "<interjection>"]] [--stop-after <seconds>]
+// --steer-after: N seconds after delivery, interject mid-turn (v4/command sendText guide, T6-B
+// checkpoint); --stop-after: N seconds after delivery, send session/stop so the core turn settles
+// with resultType=cancelled (T6-A checkpoint).
+// create carries model + top-level thoughtLevel by default (D14: since 3.12 create no longer
+// accepts runtimeModel and we no longer push a registry — the app-server reads providers from the
+// personal provider file itself): the provider is picked by D6 priority (an explicit --provider
+// must hit), the model is that provider's first id containing flash/lite/mini/air, else the first
+// one (an explicit --model must exist); --resume sends no model (verified). --provider/--model are
+// validated before mkdtemp, the personal file, and spawn: a wrong value exits 2, leaving no temp
+// dir and no child process.
+// RULES §9: print the "this will spend quota" warning first; without --yes, exit code 2 and no
+// spawning at all.
+// Answering order for permission/question: use --on-permission / --on-question when given; else,
+// with a tty on stdin, ask interactively (an empty answer means deny for permissions, throws for
+// questions); with neither → keep pending.json, print {"outcome":"blocked",…}, exit code 5
+// (T1.2b item 2).
+// stdout is one JSON line per step, all through redactSecrets + scrubValues (no apiKey appears in
+// any output); the personal provider file is disposed in a finally (RULES §6: the key lands only
+// in that one temp file, deleted at teardown).
 import { mkdtemp } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
@@ -41,10 +49,10 @@ import { redactSecrets, scrubValues } from '../lib/scrub.mjs';
 const EXIT_USAGE = 2;
 const EXIT_BLOCKED = 5;
 const VALUE_FLAGS = ['--cwd', '--text', '--resume', '--on-permission', '--on-question', '--provider', '--model', '--steer-after', '--steer-text', '--stop-after'];
-// SPEC「模型等级」的 fast 档关键词，不分大小写；real-send 默认模型从这些里挑（任务单 T1.3）
+// Keywords of the "fast" tier from SPEC's model tiers, case-insensitive; real-send picks its default model from these (task sheet T1.3)
 const FAST_MODEL_WORDS = ['flash', 'lite', 'mini', 'air'];
 
-// --provider 给了就必须命中（显式指定不能静默回落到优先级规则），没给走 D6 优先级选
+// An explicit --provider must hit (an explicit choice must not silently fall back to the priority rules); without it, pick by D6 priority
 function selectProvider(registry, wanted) {
   if (wanted === undefined) return pickProvider(registry);
   const hit = registry.providers.find((p) => p.providerId === wanted);
@@ -57,7 +65,7 @@ function selectProvider(registry, wanted) {
   return hit;
 }
 
-// 默认模型：id 含 flash/lite/mini/air 的第一个，没有就第一个（registry 过滤后 models 不会为空）
+// Default model: the first id containing flash/lite/mini/air, else the first one (after registry filtering, models is never empty)
 function defaultModelId(provider) {
   const hit = provider.models.find((m) => FAST_MODEL_WORDS.some((w) => m.modelId.toLowerCase().includes(w)));
   return hit?.modelId ?? provider.models[0]?.modelId;
@@ -77,7 +85,7 @@ function parseArgs(argv) {
         console.error(`real-send: ${a} 后缺一个值`);
         process.exit(EXIT_USAGE);
       }
-      // --on-permission → onPermission（驼峰键）
+      // --on-permission → onPermission (camelCase key)
       const key = a.slice(2).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
       args[key] = value;
       continue;
@@ -85,7 +93,7 @@ function parseArgs(argv) {
     console.error(`real-send: 不认识的参数 ${a}`);
     process.exit(EXIT_USAGE);
   }
-  // --resume 靠目录定位会话归属，不给 cwd 就不知道要接哪条工作区的会话
+  // --resume locates the session by directory; without --cwd we would not know which workspace's session to attach
   if (args.resume && !args.cwd) {
     console.error('real-send: --resume 需要同时给 --cwd');
     process.exit(EXIT_USAGE);
@@ -109,20 +117,20 @@ function parseArgs(argv) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.yes) {
-    // RULES §9：会花钱的脚本，没有 --yes 不读配置、不 spawn，直接拒
+    // RULES §9: a script that spends money — without --yes, read no config, spawn nothing, refuse outright
     console.error('real-send: 这次会花额度（真实投递给 zcode，消耗编码计划）。确认要跑请加 --yes。');
     process.exit(EXIT_USAGE);
   }
 
-  let secrets = []; // registry 里的 apiKey 值：抹 stderr 转发和输出用
+  let secrets = []; // apiKey values from the registry: used to scrub stderr forwarding and output
   const emit = (obj) => console.log(scrubValues(JSON.stringify(redactSecrets(obj)), secrets));
   let client = null;
   let gate = null;
   let sessionId = null;
   let pendingPath = null;
   let exitCodeSet = false;
-  let personalFile = null; // D14 个人 provider 文件：finally 里 dispose
-  // 审批/提问无法作答或作答出错时，打断 send 的等待，让 main 统一收尾（T1.2b 第 1 条）
+  let personalFile = null; // D14 personal provider file: disposed in the finally
+  // When a permission/question cannot be answered, or answering fails, interrupt the send wait so main does one unified teardown (T1.2b item 1)
   let abortTrigger = null;
   const aborted = new Promise((resolve) => {
     abortTrigger = (kind, error) => resolve({ kind, error });
@@ -132,8 +140,8 @@ async function main() {
     const registry = readProviderRegistry(process.env.ZCODE_CONFIG_PATH);
     secrets = registry.providers.map((p) => p.apiKey?.value).filter(Boolean);
 
-    // model 选择（D14）在任何 mkdtemp / spawn 之前定好：--provider/--model 给错了直接退 2，
-    // 不留临时目录、不起子进程、不写个人 provider 文件
+    // Model selection (D14) is settled before any mkdtemp / spawn: a wrong --provider/--model
+    // exits 2 — no temp dir left behind, no child process, no personal provider file written
     const provider = selectProvider(registry, args.provider);
     const thoughtLevel = 'high';
     const model = buildModelSelection(provider, args.model ?? defaultModelId(provider), thoughtLevel);
@@ -152,26 +160,27 @@ async function main() {
     const eventsPath = path.join(cwd, '.zcode-executor-events.jsonl');
     pendingPath = path.join(cwd, '.zcode-executor-pending.json');
 
-    // D14：app-server 不再接受推表，改成给它一份只含这一个 provider 的个人文件；
-    // apiKey 只经这一个临时文件和 requestProviderRuntimeHeaders 的应答传出去，永不进 stdout
+    // D14: the app-server no longer accepts a pushed registry; instead it gets a personal file
+    // holding just this one provider. The apiKey leaves only through that one temp file and the
+    // requestProviderRuntimeHeaders reply — never into stdout
     personalFile = writePersonalProviderFile(provider);
     const apiKey = provider.apiKey?.value;
     const providerAuth = (providerId) => {
-      // 检查点 5（2026-09-18）：api-key provider 没来过这个反向请求；留一行 stderr，哪天来了能被看见
+      // Checkpoint 5 (2026-09-18): api-key providers never sent this reverse request; keep one stderr line so it gets noticed the day one does
       console.error(`real-send: [反向请求] requestProviderRuntimeHeaders providerId=${providerId ?? '(缺 providerId)'}`);
       return providerId === EXECUTOR_PROVIDER_ID ? apiKey : undefined;
     };
     client = await AppServerClient.spawn({ cwd, secrets, personalProviderFile: personalFile.path, providerAuth });
     emit({ step: 'spawn', ok: true, result: { pid: client.pid } });
 
-    // 评审 T1.3b 第 2 条：这里必须用外层 sessionId，之前内层 let 遮蔽后 blocked 行永远是 null
+    // Review T1.3b item 2: this must use the outer sessionId — an earlier inner let shadowed it, so the blocked line was always null
     sessionId = args.resume;
     if (sessionId) {
       emit({ step: 'resume', ok: true, result: { sessionId } });
     } else {
       const created = await client.request(
         'session/create',
-        // D14：create 带 model（不再是 runtimeModel），顶层 thoughtLevel 也要带（GLM-5.3 系列必填 reasoningLevel）
+        // D14: create carries model (no longer runtimeModel), plus the top-level thoughtLevel (required as reasoningLevel by the GLM-5.3 family)
         { workspace, mode: 'build', persistence: 'immediate', titleGenerationEnabled: false, thoughtLevel, model },
         { timeoutMs: 20_000 },
       );
@@ -184,7 +193,7 @@ async function main() {
     emit({ step: 'attach', ok: true, result: { sessionId, eventsPath } });
 
     const text = args.text ?? '在当前目录新建 hello.txt，内容一行 hello，然后结束';
-    // 检查点用的定时动作：插话（v4 sendText guide）与叫停（session/stop 请求）；出错只记一行，不打断 send
+    // Timed actions for checkpoints: interjection (v4 sendText guide) and stop (session/stop request); failures only log one line, never interrupting the send
     const timers = [];
     if (args.steerAfter !== undefined) {
       timers.push(setTimeout(async () => {
@@ -217,43 +226,43 @@ async function main() {
     }
 
     if (settled.kind === 'blocked') {
-      // 挂起无法作答：pending.json 原样保留交人工，进程按 blocked 收场（关子进程）
+      // A pending that cannot be answered: pending.json is kept as-is for a human; the process ends as blocked (child process shut down)
       emit({ outcome: 'blocked', pendingPath, sessionId });
       process.exitCode = EXIT_BLOCKED;
       exitCodeSet = true;
     } else {
       const outcome = settled.outcome;
       emit({ step: 'outcome', ok: true, sessionId, eventsPath, ...outcome });
-      // RULES 退出码表：done 0；起不来 1；timeout 3；failed 4；blocked 5
+      // RULES exit-code table: done 0; cannot start 1; timeout 3; failed 4; blocked 5
       process.exitCode = { done: 0, timeout: 3, failed: 4, cancelled: 4, exited: 1, blocked: EXIT_BLOCKED }[outcome.outcome] ?? 1;
       exitCodeSet = true;
       await session.close();
     }
   } catch (err) {
-    // T1.2b 第 6 条：错误信息可能带密钥，过一遍 scrubValues
+    // T1.2b item 6: an error message may carry secrets; run it through scrubValues
     console.error(`real-send: ${scrubValues(String(err?.message ?? err), secrets)}`);
     if (!exitCodeSet) process.exitCode = err?.exitCode ?? 1;
   } finally {
-    // T1.2b 第 3 条：出错路径也要收场，不留孤儿 app-server；close 的异常不覆盖已设好的退出码
+    // T1.2b item 3: the error path must tear down too — no orphan app-server; a close failure must not clobber an already-set exit code
     try {
       await client?.close({ timeoutMs: 5000 });
     } catch (err) {
       console.error(`real-send: 收场失败：${scrubValues(String(err?.message ?? err), secrets)}`);
     }
-    // D14：个人 provider 文件用完即删，不管上面成功还是出错
+    // D14: the personal provider file is deleted once used, whether the above succeeded or failed
     personalFile?.dispose();
   }
 
-  // ---------- 挂起作答 ----------
+  // ---------- pending answers ----------
 
   async function handlePending(pending) {
     try {
       if (pending.kind === 'permission') {
-        // T1.2b 第 6 条：input 可能回显敏感内容，打印前过 scrub
+        // T1.2b item 6: input may echo sensitive content; scrub before printing
         const input = scrubValues(JSON.stringify(pending.input ?? {}), secrets);
         console.error(`real-send: [挂起·审批] ${pending.toolName} ${input} —— ${pending.reason ?? '无理由'}`);
         const response = await decidePermission();
-        if (response === null) return; // 已走 blocked 收场
+        if (response === null) return; // already on the blocked path
         gate.answer(response);
         return;
       }
@@ -262,26 +271,26 @@ async function main() {
       if (values === null) return;
       gate.answer({ values });
     } catch (err) {
-      abortTrigger('error', err); // 作答出错：打断 send，统一走 main 的 catch 打印并收场
+      abortTrigger('error', err); // answering failed: interrupt the send, let main's catch print and tear down uniformly
     }
   }
 
   async function decidePermission() {
     if (args.onPermission !== undefined) {
-      return { decision: args.onPermission }; // 预给答案优先（非终端环境）
+      return { decision: args.onPermission }; // a pre-given answer wins (non-tty environments)
     }
     if (process.stdin.isTTY) {
       const line = (await ask('real-send: 允许这次操作？(y=允许 / n=拒绝) > ')).trim();
-      if (!line) return { decision: 'deny' }; // 空答案按 deny
+      if (!line) return { decision: 'deny' }; // an empty answer counts as deny
       return line.toLowerCase() === 'y' ? { decision: 'allow' } : { decision: 'deny' };
     }
-    blockedExit(); // 没参数也不是终端：作答不了，保留 pending 交人工
+    blockedExit(); // no flag and no tty: cannot answer; keep the pending for a human
     return null;
   }
 
   async function decideQuestionValues(pending) {
     if (args.onQuestion !== undefined) {
-      // 预给答案：同一句文字按顺序套到每个问题上
+      // Pre-given answer: apply the same text to every question in order
       return (pending.questions ?? []).map(() => args.onQuestion);
     }
     if (process.stdin.isTTY) {
@@ -309,7 +318,7 @@ async function main() {
   function ask(prompt) {
     return new Promise((resolve, reject) => {
       const rl = createInterface({ input: process.stdin, output: process.stderr, terminal: true, prompt });
-      rl.on('close', () => resolve('')); // EOF 兜底：当作空答案
+      rl.on('close', () => resolve('')); // EOF fallback: treated as an empty answer
       rl.on('error', reject);
       rl.question(prompt, (line) => {
         rl.close();

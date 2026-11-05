@@ -1,13 +1,18 @@
-// 本文件负责：零 token 探针（AGENTS.md 硬约束：先走零 token 路径）——按 3.12.2 协议（decisions D14）
-// 走一遍 读表 → pickProvider → writePersonalProviderFile → spawn（personalProviderFile、providerAuth、
-// secrets）→ 确认两个被删方法/字段仍报错（workspace/updateProviderRegistry → -32601，
-// create 带 runtimeModel → -32602）→ 新形状 create（model + 顶层 thoughtLevel + toolDenylist 试探）→
-// session/subscribe → session/list → session/resume → session/close → 收场，每步打一行 JSON 到 stdout，
-// 给 docs/verified.md 攒真机事实。
-// 不负责：发 session/send（绝不发，探针零 token）、会话编排（那是上层的事）。
-// 用法：node scripts/probe.mjs。单步失败不中断，能继续的步骤继续；全局兜底见 main() 的 catch。
-// 所有 stdout 输出先过 redactSecrets 再过 scrubValues（按值抹 apiKey）；个人 provider 文件用完
-// 在 finally 里 dispose（RULES §6：密钥只落这一个临时文件，收场即删）。
+// This file is responsible for: the zero-token probe (AGENTS.md hard constraint: exercise the
+// zero-token path first) — walking the 3.12.2 flow (decisions D14): readProviderRegistry →
+// pickProvider → writePersonalProviderFile → spawn (personalProviderFile, providerAuth, secrets) →
+// confirm the two removed methods/fields still error (workspace/updateProviderRegistry → -32601,
+// create with runtimeModel → -32602) → create with the new shape (model + top-level thoughtLevel +
+// a toolDenylist probe) → session/subscribe → session/list → session/resume → session/close →
+// teardown, emitting one JSON line per step to stdout to accumulate real-device facts for
+// docs/verified.md.
+// Not responsible for: sending session/send (never sent — the probe spends no tokens), session
+// orchestration (a layer above).
+// Usage: node scripts/probe.mjs. A single step failing does not abort: steps that can continue do;
+// the global fallback is the catch around main().
+// All stdout passes redactSecrets then scrubValues (apiKeys scrubbed by value); the personal
+// provider file is disposed in a finally (RULES §6: the key lands only in that one temp file,
+// deleted at teardown).
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -25,7 +30,7 @@ import {
 } from '../lib/providers.mjs';
 import { redactSecrets, scrubValues } from '../lib/scrub.mjs';
 
-// registry 里的 apiKey 值，读表后填上；每行输出序列化后先按值抹一遍、再按键名抹一遍
+// apiKey values from the registry, filled in after reading it; each output line is serialized, scrubbed by value first, then by key name
 let outSecrets = [];
 const emit = (obj) => console.log(scrubValues(JSON.stringify(redactSecrets(obj)), outSecrets));
 const okStep = (step, extra) => emit({ step, ok: true, ...extra });
@@ -37,8 +42,9 @@ function errorOf(err) {
 }
 
 /**
- * 期望这个请求被拒——3.12 删掉的方法/字段必须报 expectedCode。报别的错误码或者意外成功
- * 都算 ok:false（协议可能又变了，值得留意）；报对了打 ok:true，意思是「确认已删」。
+ * Expect this request to be rejected — a method/field deleted in 3.12 must fail with expectedCode.
+ * Any other error code, or an unexpected success, is ok:false (the protocol may have changed
+ * again, worth watching); the expected code emits ok:true, meaning "confirmed gone".
  */
 async function expectGone(step, request, expectedCode) {
   try {
@@ -50,7 +56,7 @@ async function expectGone(step, request, expectedCode) {
   }
 }
 
-/** 会话列表的形状协议文档没写死，防御式提取所有 sessionId。 */
+/** The protocol docs do not pin down the session-list shape; defensively extract every sessionId. */
 function extractSessionIds(result) {
   const list = Array.isArray(result) ? result : result?.sessions ?? result?.items;
   if (!Array.isArray(list)) return [];
@@ -60,7 +66,7 @@ function extractSessionIds(result) {
 async function main() {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'zcode-probe-'));
   try {
-    // workspace 是个 git 仓库更接近真实；init 失败只警告，不挡探针
+    // A git repo as the workspace is closer to reality; a failed init only warns and does not block the probe
     try {
       execFileSync('git', ['init', '--quiet'], { cwd: dir, stdio: 'ignore' });
     } catch (err) {
@@ -73,7 +79,7 @@ async function main() {
 }
 
 async function runProbe(dir) {
-  // 读表 → pickProvider：失败就没法往下走个人文件与 spawn，直接报错收场
+  // Read registry → pickProvider: on failure there is no way forward to the personal file and spawn, so report and stop
   let provider;
   try {
     const registry = readProviderRegistry();
@@ -86,7 +92,7 @@ async function runProbe(dir) {
     return;
   }
 
-  // 个人 provider 文件（D14）：里面的 apiKey 和 registry 里的同一个值，重复加一次也无妨（outSecrets 去重）
+  // Personal provider file (D14): its apiKey is the same value as the registry's; adding it twice is harmless (outSecrets is deduped)
   let personalFile;
   try {
     personalFile = writePersonalProviderFile(provider);
@@ -102,7 +108,7 @@ async function runProbe(dir) {
     await runWithClient(dir, provider, personalFile);
   } finally {
     personalFile.dispose();
-    const existsAfter = existsSync(personalFile.path); // 应为 false：确认密钥文件真的删了
+    const existsAfter = existsSync(personalFile.path); // should be false: confirms the key file really got deleted
     emit({ step: 'dispose', ok: !existsAfter, existsAfter });
   }
 }
@@ -125,7 +131,7 @@ async function runWithClient(dir, provider, personalFile) {
 
   const workspace = { workspacePath: dir, workspaceKey: dir };
 
-  // 两个 3.12 删掉的方法/字段：确认已删（verified.md「3.12.2 直连探针实测」表第 2、3 行；decisions D10、D11）
+  // Two methods/fields deleted in 3.12: confirm they are gone (verified.md, "3.12.2 direct-connect probe" table rows 2–3; decisions D10, D11)
   await expectGone(
     'updateProviderRegistry-gone',
     () =>
@@ -153,7 +159,7 @@ async function runWithClient(dir, provider, personalFile) {
     -32602,
   );
 
-  // 新形状 create：model + 顶层 thoughtLevel + toolDenylist 试探（docs/reference/zcode-app-server-protocol.md「3.12.2 变化」）
+  // create with the new shape: model + top-level thoughtLevel + a toolDenylist probe (docs/reference/zcode-app-server-protocol.md, "3.12.2 changes")
   const modelId = provider.models[0]?.modelId;
   const model = buildModelSelection(provider, modelId, 'high');
   const createParams = {
@@ -171,7 +177,7 @@ async function runWithClient(dir, provider, personalFile) {
     okStep('create', { result: created });
   } catch (err) {
     failStep('create', err);
-    // toolDenylist 可能不被接受，去掉再建一次看结果
+    // toolDenylist may be rejected; drop it and create once more to see the result
     const { toolDenylist: _dropped, ...withoutDenylist } = createParams;
     try {
       created = await client.request('session/create', withoutDenylist, { timeoutMs: 20_000 });
@@ -238,7 +244,7 @@ async function runWithClient(dir, provider, personalFile) {
 try {
   await main();
 } catch (err) {
-  // 兜底：任何没接住的错打到 stderr，退出码按 ExecutorError 的表走
+  // Fallback: any error not caught earlier goes to stderr; the exit code follows the ExecutorError table
   console.error(`probe: ${err?.message ?? err}`);
   process.exitCode = err?.exitCode ?? 1;
 }

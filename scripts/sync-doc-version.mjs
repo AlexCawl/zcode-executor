@@ -1,10 +1,13 @@
-// 本文件负责：把 package.json 的版本号同步到所有带版本号的地方——两份 README 的版本徽章、
-// 各代理的插件清单（.claude-plugin、.codex-plugin、.github/plugin、.grok-plugin 的 plugin.json、
-// gemini-extension.json、plugin.yaml）的 version 字段。
-// 挂在 npm 的 version 生命周期脚本上：`npm version patch` 改完 package.json 之后、建提交之前跑，
-// 改好的文件被同一个发版提交带走。`--check` 只报漂移不写文件，挂在 npm test 里给 CI 用。
-// 每个标记都是必需的：找不到就非零退出，不默默通过——静默无操作正是这个脚本要防的事。
-// 不负责：改版本号本身（那是 npm version 的事）、打 tag、发布。
+// This file is responsible for: syncing the package.json version everywhere a version appears —
+// the version badges in the three READMEs and the version field of every host manifest
+// (.claude-plugin, .codex-plugin, .github/plugin, .grok-plugin, .antigravity-plugin plugin.json,
+// gemini-extension.json, plugin.yaml).
+// Hooked into npm's version lifecycle script: runs after `npm version patch` rewrites package.json
+// and before the commit is created, so the synced files ride along in the same release commit.
+// `--check` only reports drift without writing; npm test runs it so CI catches a missed sync.
+// Every marker is required: a missing marker exits non-zero instead of passing silently — a silent
+// no-op is exactly what this script exists to prevent.
+// Not responsible for: changing the version itself (that is npm version's job), tagging, publishing.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
