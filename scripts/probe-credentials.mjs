@@ -1,10 +1,12 @@
-// 本文件负责：线 C（docs/PLAN-v4.md T6.8）的零 token 真机探针——本机的密钥派生能不能解开
-// ~/.zcode/v2/credentials.json 里我们要用的四个键。只打印键名、解密成功与否、明文长度；
-// 永不打印任何值（RULES §8）。只读，不写任何文件，不联网。
-// 用法：node scripts/probe-credentials.mjs [--json]
-// 解密算法与 ZCode 开源源码（apps/zcode-cli/packages/adapters/src/auth/credential-cipher.ts，
-// 2026-09-21 核实）逐行等价：AES-256-GCM，值形如 enc:v1:<iv>.<tag>.<密文>（base64url），
-// 密钥 sha256(ZCODE_CREDENTIAL_SECRET 或 "zcode-credential-fallback:<platform>:<homedir>:<username>")。
+// This file is responsible for: the zero-token real-device probe of line C (docs/PLAN-v4.md T6.8) —
+// whether this machine's key derivation can decrypt the four keys we use from
+// ~/.zcode/v2/credentials.json. Prints only key names, decrypt success or failure, and plaintext
+// length; never prints any value (RULES §8). Read-only: writes no files, touches no network.
+// Usage: node scripts/probe-credentials.mjs [--json]
+// The decryption is line-for-line equivalent to the ZCode open-source code
+// (apps/zcode-cli/packages/adapters/src/auth/credential-cipher.ts, verified 2026-09-21):
+// AES-256-GCM, values look like enc:v1:<iv>.<tag>.<ciphertext> (base64url), key =
+// sha256(ZCODE_CREDENTIAL_SECRET or "zcode-credential-fallback:<platform>:<homedir>:<username>").
 import { readFileSync } from 'node:fs';
 import { createDecipheriv, createHash } from 'node:crypto';
 import os from 'node:os';
@@ -25,7 +27,7 @@ function deriveKey(env = process.env) {
   try {
     username = os.userInfo().username;
   } catch {
-    // 沙箱里可能拿不到用户名，与 CLI 的兜底一致
+    // The sandbox may not expose a username; same fallback as the CLI
   }
   const secret = configured || `zcode-credential-fallback:${os.platform()}:${os.homedir()}:${username}`;
   return { key: createHash('sha256').update(secret).digest(), source: configured ? 'ZCODE_CREDENTIAL_SECRET' : 'fallback(platform:homedir:username)' };
@@ -68,7 +70,7 @@ for (const k of Object.keys(data)) {
   say(`  ${k}  ${enc ? '[enc:v1]' : '[明文]'}`);
 }
 
-// 只解这四类键；打印「成功/失败 + 明文长度」，永不打印明文
+// Decrypt only these four kinds of keys; print "success/failure + plaintext length", never the plaintext
 const check = (label, k, describe) => {
   if (!(k in data)) {
     out.checks.push({ label, key: k, present: false });
@@ -102,7 +104,7 @@ if (family === 'zai' || family === 'bigmodel') {
   try {
     id = info ? JSON.parse(info).id : null;
   } catch {
-    // 上面已报
+    // Already reported above
   }
   if (id !== null && id !== undefined) {
     const enc = encodeURIComponent(String(id));
